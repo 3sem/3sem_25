@@ -25,7 +25,14 @@ cmd_args_dict* parse_cmd(char* cmd_string, char** cmd_string_ptr) {
     }
     //DEBUG_PRINTF("curr_cmd full: %s\n", curr_cmd);
     char** curr_cmd_ptr = &curr_cmd;
-    dict->cmd = strtok_r(curr_cmd, " ", curr_cmd_ptr); 
+    char* exec_file = strtok_r(curr_cmd, " ", curr_cmd_ptr); 
+    if (!exec_file) {
+
+        free(dict);
+        return NULL;
+    }
+
+    dict->cmd = strdup(exec_file);
     if (!dict->cmd) {
 
         free(dict);
