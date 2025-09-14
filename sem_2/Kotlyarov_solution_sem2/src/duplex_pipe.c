@@ -39,6 +39,10 @@ Duplex_pipe* duplex_pipe_ctor(size_t tmp_buf_capacity) {
         return NULL;
     }
     
+    DEBUG_PRINTF("Pipefd\nParent:\nread end  -> %d\n", dplx_pipe->pipefd_reverse[RD_PIPE_END]);
+    DEBUG_PRINTF("write end -> %d\n", dplx_pipe->pipefd_direct[WR_PIPE_END]);
+    DEBUG_PRINTF("Child:\nread end  -> %d\n", dplx_pipe->pipefd_direct[RD_PIPE_END]);
+    DEBUG_PRINTF("write end -> %d\n", dplx_pipe->pipefd_reverse[WR_PIPE_END]);
     dplx_pipe->methods.recieve = duplex_pipe_recieve;
     dplx_pipe->methods.send = duplex_pipe_send;
     dplx_pipe->methods.close_pipefd = duplex_pipe_close_pipefd;
@@ -119,7 +123,7 @@ int64_t duplex_pipe_recieve(Duplex_pipe* dplx_pipe, int recieve_opt) {
     
     if(curr_size == -1) {
         
-        DEBUG_PRINTF("ERROR: recieve failed\n");
+        DEBUG_PRINTF("ERROR: recieve failed (%d)\n", recieve_pipefd);
         return Recieve_error_val;
     }
 
@@ -129,7 +133,7 @@ int64_t duplex_pipe_recieve(Duplex_pipe* dplx_pipe, int recieve_opt) {
         //DEBUG_PRINTF("Recieve: \n%sEND\n", dplx_pipe->tmp_buf);
     }
 
-    DEBUG_PRINTF("Recieve: total_size = %ld\n", curr_size);
+    DEBUG_PRINTF("Recieve: total_size = %ld (%d)\n", curr_size, recieve_pipefd);
     return curr_size;
 }
 
@@ -155,12 +159,12 @@ int64_t duplex_pipe_send(Duplex_pipe* dplx_pipe, int send_opt) {
     
     if(curr_size == -1) {
         
-        DEBUG_PRINTF("ERROR: send failed\n");
+        DEBUG_PRINTF("ERROR: send failed (%d)\n", send_pipefd);
         return Send_error_val;
     }
 
     //DEBUG_PRINTF("Send: \n%.*sEND\n", (int)curr_size, dplx_pipe->tmp_buf);
-    DEBUG_PRINTF("Send: total_size = %ld\n", curr_size);
+    DEBUG_PRINTF("Send: total_size = %ld (%d)\n", curr_size, send_pipefd);
     return curr_size;
 }
 

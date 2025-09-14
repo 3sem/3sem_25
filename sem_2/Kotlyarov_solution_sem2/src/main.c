@@ -36,7 +36,7 @@ int main() {
         DEBUG_PRINTF("Child EXITED while\n");
         
         if(curr_size == Recieve_error_val) {
-            dplx_pipe->methods.dtor(dplx_pipe); // Освободить до exit
+            dplx_pipe->methods.dtor(dplx_pipe); 
             exit(Recieve_error_val);
         }
 
@@ -49,62 +49,46 @@ int main() {
     else {
 
         dplx_pipe->methods.close_unused_pipefd(dplx_pipe, PRNT_PIPE);
-        
-        int64_t curr_size = 0;
-        int i = 0;
-        DEBUG_PRINTF("PARENT ");
-        while ((curr_size = dplx_pipe->methods.recieve(dplx_pipe, STDIN_FILENO)) > 0) {
+        int64_t curr_size_dir = 1, curr_size_rev = 1;
+        do {
 
-            DEBUG_PRINTF("PARENT ");
-            if (dplx_pipe->methods.send(dplx_pipe, SND_DIR) == Send_error_val) {
+            if (curr_size_dir > 0) {  
 
+                curr_size_dir = dplx_pipe->methods.recieve(dplx_pipe, STDIN_FILENO);
+                if(curr_size_dir == Recieve_error_val) {
+                
+                    dplx_pipe->methods.dtor(dplx_pipe);  
+                    return Recieve_error_val;
+                }
+
+                else if(curr_size_dir == 0)
+                    dplx_pipe->methods.close_pipefd(dplx_pipe, WR_DIR);
+
+                else if (dplx_pipe->methods.send(dplx_pipe, SND_DIR) == Send_error_val) {
+
+                    dplx_pipe->methods.dtor(dplx_pipe);  
+                    return Send_error_val;
+                }
+            }
+            
+            curr_size_rev = dplx_pipe->methods.recieve(dplx_pipe, RCV_REV);
+            if(curr_size_rev == Recieve_error_val) {
+                
                 dplx_pipe->methods.dtor(dplx_pipe);  
-                return Send_error_val;
+                return Recieve_error_val;
             }
 
-            DEBUG_PRINTF("Parent in while: %d\n", i++);
-            DEBUG_PRINTF("PARENT ");
-        }
-
-        DEBUG_PRINTF("Parent EXITED while\n");
-        i = 0;
-
-        if(curr_size == Recieve_error_val) {
-            
-            dplx_pipe->methods.dtor(dplx_pipe);  
-            return Recieve_error_val;
-        }
-
-        DEBUG_PRINTF("Parent->child transmition succeeded\n");
-        dplx_pipe->methods.close_pipefd(dplx_pipe, WR_DIR);
-        //close(dplx_pipe->pipefd_direct[WR_PIPE_END]);
-        wait(NULL);
-        DEBUG_PRINTF("PARENT ");
-        while ((curr_size = dplx_pipe->methods.recieve(dplx_pipe, RCV_REV)) > 0) {
-
-            DEBUG_PRINTF("PARENT ");
             if (dplx_pipe->methods.send(dplx_pipe, STDOUT_FILENO) == Send_error_val) {
 
                 dplx_pipe->methods.dtor(dplx_pipe);  
                 return Send_error_val;
             }
-
-            DEBUG_PRINTF("Parent in while: %d\n", i++);
-            DEBUG_PRINTF("PARENT ");
         }
-
-        DEBUG_PRINTF("Parent EXITED while\n");
-        
-        if(curr_size == Recieve_error_val) {
-            
-            dplx_pipe->methods.dtor(dplx_pipe);  
-            return Recieve_error_val;
-        }
-
-        DEBUG_PRINTF("Parent<-child transmition succeeded\n");
-
+        while (curr_size_dir > 0 || curr_size_rev > 0); 
     }
 
+    DEBUG_PRINTF("Parent->child && Parent<-child transmition succeeded\n");
+    wait(NULL);
     dplx_pipe->methods.dtor(dplx_pipe);
     return 0;
 }
