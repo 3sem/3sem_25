@@ -26,6 +26,7 @@ typedef struct pipe_methods  {
 
 typedef struct d_pipe {
         char* tmp_buf; 
+        size_t tmp_buf_capacity; // data length in intermediate buffer
         size_t tmp_buf_size; // data length in intermediate buffer
         int pipefd_direct[2]; // array of r/w descriptors for "pipe()" call (for parent-->child direction)
         int pipefd_reverse[2]; // array of r/w descriptors for "pipe()" call (for child-->parent direction)

@@ -1,6 +1,6 @@
 #include <duplex_pipe.h>
 
-Duplex_pipe* duplex_pipe_ctor(size_t tmp_buf_size) { 
+Duplex_pipe* duplex_pipe_ctor(size_t tmp_buf_capacity) { 
 
     Duplex_pipe* dplx_pipe = (Duplex_pipe*) calloc(1, sizeof(Duplex_pipe));
     if (!dplx_pipe) {
@@ -9,25 +9,33 @@ Duplex_pipe* duplex_pipe_ctor(size_t tmp_buf_size) {
         return NULL;
     }
 
-    if (tmp_buf_size <= 0)
-        tmp_buf_size = Tmp_buf_def_size;
+    if (tmp_buf_capacity <= 0)
+        dplx_pipe->tmp_buf_capacity = Tmp_buf_def_size;
 
-    dplx_pipe->tmp_buf = (char*) calloc(tmp_buf_size, sizeof(char));
+    else
+        dplx_pipe->tmp_buf_capacity = tmp_buf_capacity;
+
+    dplx_pipe->tmp_buf = (char*) calloc(tmp_buf_capacity, sizeof(char));
     if (!dplx_pipe->tmp_buf) {
 
         DEBUG_PRINTF("ERROR: memory was not allocated\n");
+        free(dplx_pipe);
         return NULL;
     }
 
     if (pipe(dplx_pipe->pipefd_direct) == -1) {
-
+        
         perror("ERROR: pipe failed\n");
+        free(dplx_pipe->tmp_buf);
+        free(dplx_pipe);
         return NULL;
     }
 
     if (pipe(dplx_pipe->pipefd_reverse) == -1) {
 
         perror("ERROR: pipe failed\n");
+        free(dplx_pipe->tmp_buf);
+        free(dplx_pipe);
         return NULL;
     }
     
@@ -107,31 +115,22 @@ int64_t duplex_pipe_recieve(Duplex_pipe* dplx_pipe, int recieve_opt) {
     else
         recieve_pipefd = recieve_opt;
 
+    ssize_t curr_size = read(recieve_pipefd, dplx_pipe->tmp_buf, dplx_pipe->tmp_buf_capacity - 1);
+    
+    if(curr_size == -1) {
         
-    int64_t total_size = 0;
-    for(
-        int64_t curr_size = 0; 
-        (curr_size = read(
-                        recieve_pipefd, 
-                        dplx_pipe->tmp_buf + total_size, 
-                        dplx_pipe->tmp_buf_size-1
-                     )) > 0;
-        total_size += curr_size
-    ) 
-    {
-
-        if(curr_size == -1) {
-            
-            DEBUG_PRINTF("ERROR: recieve failed\n");
-            return Recieve_error_val;
-        }
-
-        dplx_pipe->tmp_buf[total_size + curr_size] = 0; // the text string data is expected
-        DEBUG_PRINTF("Recieve: %s\n", dplx_pipe->tmp_buf + total_size);
+        DEBUG_PRINTF("ERROR: recieve failed\n");
+        return Recieve_error_val;
     }
 
-    DEBUG_PRINTF("Recieve: total_size = %ld\n", total_size);
-    return total_size;
+    if (curr_size > 0) {
+        dplx_pipe->tmp_buf[curr_size] = 0;
+        dplx_pipe->tmp_buf_size = curr_size;
+        //DEBUG_PRINTF("Recieve: \n%sEND\n", dplx_pipe->tmp_buf);
+    }
+
+    DEBUG_PRINTF("Recieve: total_size = %ld\n", curr_size);
+    return curr_size;
 }
 
 int64_t duplex_pipe_send(Duplex_pipe* dplx_pipe, int send_opt) { 
@@ -152,29 +151,17 @@ int64_t duplex_pipe_send(Duplex_pipe* dplx_pipe, int send_opt) {
     else
         send_pipefd = send_opt;
 
-    int64_t total_size = 0;
-    for(
-        int64_t curr_size = 0; 
-        (curr_size = write(
-                        send_pipefd, 
-                        dplx_pipe->tmp_buf + total_size, 
-                        dplx_pipe->tmp_buf_size-1
-                     )) > 0;
-        total_size += curr_size
-    ) 
-    {
-
-        if(curr_size == -1) {
-            
-            DEBUG_PRINTF("ERROR: send failed\n");
-            return Send_error_val;
-        }
-
-        DEBUG_PRINTF("Send: %.*s\n", curr_size, dplx_pipe->tmp_buf + total_size);
+    ssize_t curr_size = write(send_pipefd, dplx_pipe->tmp_buf, dplx_pipe->tmp_buf_size);
+    
+    if(curr_size == -1) {
+        
+        DEBUG_PRINTF("ERROR: send failed\n");
+        return Send_error_val;
     }
 
-    DEBUG_PRINTF("Send: total_size = %ld\n", total_size);
-    return total_size;
+    //DEBUG_PRINTF("Send: \n%.*sEND\n", (int)curr_size, dplx_pipe->tmp_buf);
+    DEBUG_PRINTF("Send: total_size = %ld\n", curr_size);
+    return curr_size;
 }
 
 bool duplex_pipe_dtor(Duplex_pipe* dplx_pipe) { 
