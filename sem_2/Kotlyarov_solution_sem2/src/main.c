@@ -18,24 +18,17 @@ int main() {
 
         dplx_pipe->methods.close_unused_pipefd(dplx_pipe, CHLD_PIPE);
         int64_t curr_size = 0;
-        int i = 0;
-        DEBUG_PRINTF("CHILD ");
         while ((curr_size = dplx_pipe->methods.recieve(dplx_pipe, RCV_DIR)) > 0) {
 
-            DEBUG_PRINTF("CHILD ");
             if (dplx_pipe->methods.send(dplx_pipe, SND_REV) == Send_error_val) {
 
                 dplx_pipe->methods.dtor(dplx_pipe);  
                 exit(Send_error_val);
             }
-           
-            DEBUG_PRINTF("Child in while: %d\n", i++);
-            DEBUG_PRINTF("CHILD ");
         }
         
-        DEBUG_PRINTF("Child EXITED while\n");
-        
-        if(curr_size == Recieve_error_val) {
+        if (curr_size == Recieve_error_val) {
+
             dplx_pipe->methods.dtor(dplx_pipe); 
             exit(Recieve_error_val);
         }
@@ -55,14 +48,16 @@ int main() {
             if (curr_size_dir > 0) {  
 
                 curr_size_dir = dplx_pipe->methods.recieve(dplx_pipe, STDIN_FILENO);
-                if(curr_size_dir == Recieve_error_val) {
+                if (curr_size_dir == Recieve_error_val) {
                 
                     dplx_pipe->methods.dtor(dplx_pipe);  
                     return Recieve_error_val;
                 }
 
-                else if(curr_size_dir == 0)
+                else if (curr_size_dir == 0) {
+
                     dplx_pipe->methods.close_pipefd(dplx_pipe, WR_DIR);
+                }
 
                 else if (dplx_pipe->methods.send(dplx_pipe, SND_DIR) == Send_error_val) {
 
@@ -78,6 +73,9 @@ int main() {
                 return Recieve_error_val;
             }
 
+            if (curr_size_rev == 0)
+                break;
+
             if (dplx_pipe->methods.send(dplx_pipe, STDOUT_FILENO) == Send_error_val) {
 
                 dplx_pipe->methods.dtor(dplx_pipe);  
@@ -90,5 +88,6 @@ int main() {
     DEBUG_PRINTF("Parent->child && Parent<-child transmition succeeded\n");
     wait(NULL);
     dplx_pipe->methods.dtor(dplx_pipe);
+
     return 0;
 }
