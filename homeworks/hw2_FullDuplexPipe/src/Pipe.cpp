@@ -3,11 +3,17 @@
 #include <stdio.h>
 #include "FullDuplexPipe.hpp"
 
-size_t rcv(Pipe* self, int fd) {
+size_t rcv(pPipe* self, int fd);
+size_t snd(pPipe* self, int fd);
+
+int create_pipe(pPipe* Pipe, size_t buf_size);
+int destroy_pipe(pPipe* Pipe);
+
+size_t rcv(pPipe* self, int fd) {
     return (self->len = (size_t)read(fd, self->data, self->size));
 }
 
-size_t snd(Pipe* self, int fd) {
+size_t snd(pPipe* self, int fd) {
     return (size_t)write(fd, self->data, self->len);
 }
 
