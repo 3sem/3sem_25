@@ -6,27 +6,21 @@
 #include <string.h>
 #include <ctype.h>
 
-const char* CMD_SEP_WORD = "|";
-const char* ARGS_SEP_WORD = " ";
 const size_t MAX_INPUT = 4096;
 const size_t MAX_CMDS_AMT = 20;
 const size_t MAX_ARGS_AMT = 20;
 
 struct CmdStruct
 {
-    char** cmd;                                     //команда с аргументами
+    char** cmd;
     int exit_code;
 };
-
-//----------------------------------------------------------------------
 
 void seq_pipe(CmdStruct* cmd);
 
 CmdStruct* cmds_ctor();
 CmdStruct* get_cmds();
 void cmds_dtor(CmdStruct* cmds);
-
-//----------------------------------------------------------------------
 
 int main()
 {
@@ -97,7 +91,7 @@ CmdStruct* get_cmds()
 
     while (i < MAX_CMDS_AMT)
     {
-        sscanf_res = sscanf(cmds_line + cmd_chars_cnt, "%[^|]", cmd_buf);           //вернет строку с отдельной командой
+        sscanf_res = sscanf(cmds_line + cmd_chars_cnt, "%[^|]", cmd_buf);
 
         if (sscanf_res < 1)
             break;
@@ -107,11 +101,11 @@ CmdStruct* get_cmds()
         while (j < MAX_ARGS_AMT)
         {
             int ind = 0;
-            while (isspace(cmd_buf[ind]))                                           //пропускаем пробелы в начале
+            while (isspace(cmd_buf[ind]))                            
                 ind++;
 
             sscanf_res = sscanf(cmd_buf + ind + words_chars_cnt, "%[^ ]", word_buf);
-            if (sscanf_res < 1)                                                     //обрабатываем остаток строки
+            if (sscanf_res < 1)                                    
                 break;
 
             cmds[i].cmd[j] = strdup(word_buf);
@@ -119,11 +113,11 @@ CmdStruct* get_cmds()
             j++;
             words_chars_cnt += strlen(word_buf) + 1;
         }
-        cmds[i].cmd[j] = NULL;                                                      //метка, что аргументы в команде кончились
+        cmds[i].cmd[j] = NULL;                                   
         i++;
         cmd_chars_cnt += strlen(cmd_buf) + 1;
     }
-    cmds[i].cmd[0] = NULL;                                                          //метка, что команды закончились
+    cmds[i].cmd[0] = NULL;                         
 
     
     return cmds;
@@ -148,12 +142,12 @@ void seq_pipe(CmdStruct* cmd)
             if (cmd_num > 0)
                 dup2(fd_in, 0);
 
-            if (cmd[cmd_num + 1].cmd[0] != NULL)                                //выведет результат всех команд в терминал пользователю, если команда последняя
+            if (cmd[cmd_num + 1].cmd[0] != NULL)         
                 dup2(pipe_fds[1], 1);
 
             close(pipe_fds[0]);
 
-            execvp(cmd[cmd_num].cmd[0], cmd[cmd_num].cmd);                      //cmd - массив строк до разделителя, первый элемент - типа путь
+            execvp(cmd[cmd_num].cmd[0], cmd[cmd_num].cmd);         
             exit(2);
         } 
         else 
