@@ -69,6 +69,7 @@ cmd_args_dict* parse_cmd(char* cmd_string, char** cmd_string_ptr) {
     }
     
     D_ARRAY_PUSH_PTR(d_array, dict->cmd);
+    dict->args_amount = 1;
     char* token = NULL;
     while ((token = strtok_r(NULL, " ", curr_cmd_ptr))) {
 
@@ -86,6 +87,7 @@ cmd_args_dict* parse_cmd(char* cmd_string, char** cmd_string_ptr) {
             }
 
             D_ARRAY_PUSH_PTR(d_array_sep_args_ptrs, sep_args_ptr); 
+            
         }
 
         else{
@@ -95,7 +97,7 @@ cmd_args_dict* parse_cmd(char* cmd_string, char** cmd_string_ptr) {
         }
 
     }
-   
+
     D_ARRAY_PUSH_PTR(d_array, token);
     dict->args = d_array;
     dict->sep_args_ptrs = d_array_sep_args_ptrs;
@@ -107,7 +109,7 @@ char* separate_args(char* arg, Dynamic_array* d_array, size_t* args_amount_ptr) 
 
     Dynamic_array d_array_sep_args = {};
     Dynamic_array* d_array_sep_args_ptr = &d_array_sep_args;  
-    if (!Dynamic_array_ctor(&d_array_sep_args, 3*(strlen(arg)-1), 0)) // space for each '-' '{char}' '\0'
+    if (!Dynamic_array_ctor(&d_array_sep_args, 3*(strlen(arg)), 0)) // space for each '-' '{char}' '\0'
         return NULL;
 
     for (int i = 1; isalnum(arg[i]); i++) {
@@ -119,7 +121,7 @@ char* separate_args(char* arg, Dynamic_array* d_array, size_t* args_amount_ptr) 
         INSERT_BYTE(d_array_sep_args_ptr, '\0');
         (*args_amount_ptr)++;
     }
-
+    
     return d_array_sep_args.data;
 }
 

@@ -1,3 +1,4 @@
+#include <stddef.h>
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,9 +34,9 @@ int main() {
         
         char** work_buf_ptr = &work_buf;
         cmd_args_dict* dict = parse_cmd(work_buf, work_buf_ptr);
-        while (dict) {
+        D_ARRAY_PUSH_PTR(dicts_d_array_ptr, dict);
+        while ((dict = parse_cmd(NULL, work_buf_ptr))) {
             D_ARRAY_PUSH_PTR(dicts_d_array_ptr, dict);
-            dict = parse_cmd(NULL, work_buf_ptr);
         }
         
         cmd_args_dict** dicts = (cmd_args_dict**) dicts_d_array.data; 
