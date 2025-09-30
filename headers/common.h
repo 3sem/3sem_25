@@ -14,6 +14,8 @@ if (!(x = calloc(size, sizeof(*x)))) {       \
     return err;                              \
 }
 
+int write_result(int fd_in);
+
 #define SET_ZERO(x) memset(x, 0, sizeof(*x))
 
 
