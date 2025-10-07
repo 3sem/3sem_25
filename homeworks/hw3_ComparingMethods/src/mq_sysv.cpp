@@ -6,18 +6,14 @@
 #include <fcntl.h>
 #include <cstdlib>
 #include <string.h>
-#include <wait.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 #include "MsgSysV.hpp" 
 
 int main() {
 	
 	struct message msg;
 	msg.mtype = 1;
-
-	const char text[] = "This message was sended from parent to child with message queue!\n";
-	strcpy(msg.mtext, text);
-
-	msg.mtext[MESSAGE_TEXT_SIZE - 1] = '\0';
 
 	key_t key = 0;
 	if ((key = ftok("/tmp", 'A')) == -1) {
@@ -43,45 +39,65 @@ int main() {
 		int new_file = open(FILE_NEW FILE_NAME, O_CREAT | O_WRONLY | O_TRUNC, 0644);
 		if (new_file < 0) {
 		    perror("opening new file failed");
-		    return EXIT_FAILURE;
+		    exit(EXIT_FAILURE);
 		}
 
-		while ((msgrcv(msgid, &msg, sizeof(msg.mtext), 1, 0) > -1)) {
-		 	//printf("Received message with type: %ld - %s", msg.mtype, msg.mtext);
-			if (write(new_file, msg.mtext, sizeof(msg.mtext)) == -1) {
-				perror("write");
-				return EXIT_FAILURE;
+		while (1) {
+			ssize_t rcv_size = msgrcv(msgid, &msg, sizeof(msg.mtext), 1, 0);
+			if (rcv_size < 0) {
+				perror("msgrcv");
+				exit(EXIT_FAILURE);
+			}
+			else if (!memcmp(msg.mtext, MSG_END, sizeof(MSG_END))) {
+				break;
+			}
+			else {
+				if (write(new_file, msg.mtext, (size_t)rcv_size) == -1) {
+					perror("write");
+					exit(EXIT_FAILURE);
+				}
 			}
 		}
 
 		close(new_file);
 
-		if ((msgctl(msgid, IPC_RMID, NULL) == -1))
+		if ((msgctl(msgid, IPC_RMID, NULL) == -1)) {
 	 		perror("msgctl");
+			exit(EXIT_FAILURE);
+		}
 	}
 	else {
 		printf("Hello from parent!\n");
 		
 		int file = open(FILE_NAME, O_RDONLY | 0644);
 		if (file < 0) {
-		  	if (errno == ENOENT)
+		  	if (errno == ENOENT) {
 		        	system(FILE_CREATE);
-				file = open(FILE_NAME, O_RDONLY | 0644);
+					file = open(FILE_NAME, O_RDONLY | 0644);
+			}
 		   	else {
 		        	perror("opening file failed");
-		        	return EXIT_FAILURE;
+		        	exit(EXIT_FAILURE);
 		    	}
 		}
 
-		while (read(file, msg.mtext, sizeof(msg.text)) > -1) {
-			if (msgsnd(msgid, &msg, sizeof(msg.mtext), 0) == -1) {
+		ssize_t read_size = 0;
+		while ((read_size = read(file, msg.mtext, sizeof(msg.mtext))) > 0) {
+			if (msgsnd(msgid, &msg, (size_t)read_size, 0) == -1) {
 				perror("msgsnd");
 				exit(EXIT_FAILURE);
 			}
 		}
+
+		memcpy(msg.mtext, MSG_END, sizeof(MSG_END));
+		if (msgsnd(msgid, &msg, sizeof(MSG_END), 0) == -1) {
+			perror("msgsnd");
+			exit(EXIT_FAILURE);
+		}
+
 		wait(NULL);
 		close(file);				
 	}
 
- 	return 0;
+ 	exit(0);
 }                   
