@@ -6,11 +6,11 @@
 #define FILE_NEW	"new_"
 #define FILE_CREATE 	"time dd if=/dev/urandom of=" FILE_NAME " bs=1048576 count=1"
 
-#define MSQ_SIZE 	8192
-#define MSQ_PERMISSIONS 0644
-#define MSQ_END 	"EOM"
+#define SHM_SIZE	1024
+#define SHM_PERMISSIONS 0644
 
-struct message {
- 	long mtype;
-	char mtext[MSQ_SIZE];
+struct SharedMemory {
+	char buf[SHM_SIZE];
+	size_t buf_size;
+	char eof;
 };

@@ -27,8 +27,21 @@ else()
     message(STATUS "include-what-you-use not found, continuing without it")
 endif()
 
-file(GLOB_RECURSE SOURCES "src/*.cpp")
-file(GLOB_RECURSE HEADERS "include/*.hpp" "include/*.h")
+file(GLOB SOURCES "src/*.cpp" "src/*.c")
+foreach(src_file ${SOURCES})
+    get_filename_component(target_name ${src_file} NAME_WE)
+    if(NOT ${target_name} STREQUAL ${PROJECT_NAME})
+        add_executable(${target_name} ${src_file})
+    endif()
+endforeach()
+
+file(GLOB HEADERS "include/*.hpp" "include/*.h")
+foreach(src_file ${SOURCES})
+    get_filename_component(target_name ${src_file} NAME_WE)
+    if(NOT ${target_name} STREQUAL ${PROJECT_NAME})
+        target_include_directories(${target_name} PRIVATE include)
+    endif()
+endforeach()
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
