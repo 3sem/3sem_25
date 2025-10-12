@@ -32,6 +32,8 @@ foreach(src_file ${SOURCES})
     get_filename_component(target_name ${src_file} NAME_WE)
     if(NOT ${target_name} STREQUAL ${PROJECT_NAME})
         add_executable(${target_name} ${src_file})
+        target_compile_options(${target_name} PRIVATE $<$<CONFIG:Debug>:${DEBUG_FLAGS}>)
+        target_link_options(${target_name} PRIVATE $<$<CONFIG:Debug>:${DEBUG_FLAGS}>)
     endif()
 endforeach()
 

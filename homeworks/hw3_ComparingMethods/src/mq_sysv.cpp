@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include "MsgSysV.hpp" 
+#include "Utils.hpp"
 
 int main() {
 	struct timespec start, end;
@@ -43,9 +44,9 @@ int main() {
 		    exit(EXIT_FAILURE);
 		}
 
-		printf("*Child process starts receiving messages and writting them to %s*\n", FILE_NEW FILE_NAME);
+		printf("*Child process starts receiving messages and writing them to %s*\n", FILE_NEW FILE_NAME);
 
-		ssize_t overall_bytes_recieved = 0, overall_bytes_written = 0;
+		ssize_t overall_bytes_received = 0, overall_bytes_written = 0;
 		while (1) {
 			ssize_t rcv_size = msgrcv(msgid, &msg, sizeof(msg.mtext), 1, 0);
 			if (rcv_size < 0) {
@@ -56,7 +57,7 @@ int main() {
 				break;
 			}
 			else {
-				overall_bytes_recieved += rcv_size;
+				overall_bytes_received += rcv_size;
 				ssize_t wrt_size = write(new_file, msg.mtext, (size_t)rcv_size);
 				if (wrt_size == -1) {
 					perror("write");
@@ -68,8 +69,8 @@ int main() {
 
 		close(new_file);
 
-		printf("=== Child process finished receiving and writting messages ===\n");
-		printf("Overall recieved bytes: %ld\n", overall_bytes_recieved);
+		printf("=== Child process finished receiving and writing messages ===\n");
+		printf("Overall received bytes: %ld\n", overall_bytes_received);
 		printf("Overall written bytes: %ld\n", overall_bytes_written);
 
 		exit(0);
@@ -79,13 +80,13 @@ int main() {
 		if (file < 0) {
 		  	if (errno == ENOENT) {
 				printf("=== Creating file ===\n");
-		        	system(FILE_CREATE);
+		        system(FILE_CREATE);
 				file = open(FILE_NAME, O_RDONLY | 0644);
 			}
 		   	else {
-		        	perror("opening file failed");
-		        	exit(EXIT_FAILURE);
-		    	}
+				perror("opening file failed");
+				exit(EXIT_FAILURE);
+			}
 		}
 
 		printf("*Parent process starts reading from file %s and sending data*\n", FILE_NAME);
@@ -126,13 +127,13 @@ int main() {
 		printf("Overall sended bytes: %ld\n", overall_bytes_sended);
 	}
 
-	transmission_time = (end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
-	printf("=== Time ===\nOverall transmission time: %lf seconds\n", transmission_time);
-
 	if ((msgctl(msgid, IPC_RMID, NULL) == -1)) {
  		perror("msgctl");
 		exit(EXIT_FAILURE);
 	}
+
+	transmission_time = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
+	printf("=== Time ===\nOverall transmission time: %lf seconds\n", transmission_time);
 
  	exit(0);
 }                   

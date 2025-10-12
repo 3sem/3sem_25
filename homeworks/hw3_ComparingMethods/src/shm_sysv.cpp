@@ -10,6 +10,7 @@
 #include <time.h>
 #include <sys/types.h>
 #include "ShmSysV.hpp"
+#include "Utils.hpp"
 
 int init_semaphore();
 void sem_lock(int semid, short unsigned int semnum);
@@ -55,7 +56,7 @@ int main() {
 			exit(EXIT_FAILURE);
 		}
 
-		printf("*Child process starts reading from shm_segment and writting to %s*\n", FILE_NEW FILE_NAME);
+		printf("*Child process starts reading from shm_segment and writing to %s*\n", FILE_NEW FILE_NAME);
 
 		ssize_t overall_bytes_wr = 0;
 		while (1) {
@@ -80,23 +81,23 @@ int main() {
 		shmdt(shm_segment);
 		close(new_file);
 
-		printf("=== Child process finished reading shm_segment and writting to file ===\n");
+		printf("=== Child process finished reading shm_segment and writing to file ===\n");
 		printf("Overall written-read bytes: %ld\n", overall_bytes_wr);
 
 		exit(0);
 	}
 	else {
-		int file = open(FILE_NAME, O_RDONLY | 0644);
+		int file = open(FILE_NAME, O_RDONLY | O_DIRECT, 0644);
 		if (file < 0) {
 		  	if (errno == ENOENT) {
 				printf("=== Creating file ===\n");
-		        	system(FILE_CREATE);
+		        system(FILE_CREATE);
 				file = open(FILE_NAME, O_RDONLY | 0644);
 			}
 		   	else {
-		        	perror("opening file failed");
-		        	exit(EXIT_FAILURE);
-		    	}
+				perror("opening file failed");
+				exit(EXIT_FAILURE);
+			}
 		}
 
 		SharedMemory* shm_segment = (SharedMemory*)shmat(shmid, NULL, 0);
@@ -151,7 +152,7 @@ int main() {
 		printf("Overall read-written bytes: %ld\n", overall_bytes_rw);
 	}
 
-	transmission_time = (end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
+	transmission_time = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
 	printf("=== Time ===\nOverall transmission time: %lf seconds\n", transmission_time);
 	
 	shmctl(shmid, IPC_RMID, NULL);

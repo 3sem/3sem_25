@@ -9,4 +9,4 @@ struct SharedMemory {
 	char buf[SHM_SIZE];
 	size_t buf_size;
 	char eof;
-};
+} __attribute__((aligned(4096)));
