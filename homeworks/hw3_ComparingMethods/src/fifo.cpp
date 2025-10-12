@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "Fifo.hpp"
+#include "Utils.hpp"
 
 int main() {
 	struct timespec start, end;
@@ -45,7 +46,7 @@ int main() {
 			exit(EXIT_FAILURE);
 		}
                 
-		printf("*Child process starts reading fifo and writting to %s*\n", FILE_NEW FILE_NAME);
+		printf("*Child process starts reading fifo and writing to %s*\n", FILE_NEW FILE_NAME);
 
 		ssize_t read_size = 0;
 		ssize_t overall_bytes_read = 0, overall_bytes_written = 0;
@@ -67,24 +68,24 @@ int main() {
 		close(fifo_file);
 		close(new_file);
 
-		printf("=== Child process finished reading fifo and writting to file ===\n");
+		printf("=== Child process finished reading fifo and writing to file ===\n");
 		printf("Overall read bytes: %ld\n", overall_bytes_read);
 		printf("Overall written bytes: %ld\n", overall_bytes_written);
 
 		exit(0);
 	}
 	else {
-		int file = open(FILE_NAME, O_RDONLY | 0644);
+		int file = open(FILE_NAME, O_RDONLY | O_DIRECT, 0644);
 		if (file < 0) {
 		  	if (errno == ENOENT) {
 				printf("=== Creating file ===\n");
-		        	system(FILE_CREATE);
-				file = open(FILE_NAME, O_RDONLY | 0644);
+		        system(FILE_CREATE);
+				file = open(FILE_NAME, O_RDONLY | O_DIRECT, 0644);
 			}
 		   	else {
-		        	perror("opening file failed");
-		        	exit(EXIT_FAILURE);
-		    	}
+				perror("opening file failed");
+				exit(EXIT_FAILURE);
+			}
 		}
 
 		int fifo_file = open(FIFO_NAME, O_WRONLY);
@@ -132,7 +133,7 @@ int main() {
 		printf("Overall written bytes: %ld\n", overall_bytes_written);
 	}
 
-	transmission_time = (end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
+	transmission_time = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
 	printf("=== Time ===\nOverall transmission time: %lf seconds\n", transmission_time);
 	
 	unlink(FIFO_NAME);

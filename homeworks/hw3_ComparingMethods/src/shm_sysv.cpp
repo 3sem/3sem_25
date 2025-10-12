@@ -92,7 +92,7 @@ int main() {
 		  	if (errno == ENOENT) {
 				printf("=== Creating file ===\n");
 		        system(FILE_CREATE);
-				file = open(FILE_NAME, O_RDONLY | 0644);
+				file = open(FILE_NAME, O_RDONLY | O_DIRECT, 0644);
 			}
 		   	else {
 				perror("opening file failed");

@@ -2,7 +2,7 @@
 
 #include "Utils.hpp"
 
-#define SHM_SIZE		8192
+#define SHM_SIZE		65536
 #define SHM_PERMISSIONS 0644
 
 struct SharedMemory {
