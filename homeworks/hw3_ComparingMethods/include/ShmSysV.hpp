@@ -6,7 +6,7 @@
 #define FILE_NEW	"new_"
 #define FILE_CREATE 	"time dd if=/dev/urandom of=" FILE_NAME " bs=1048576 count=1"
 
-#define SHM_SIZE	1024
+#define SHM_SIZE	8192
 #define SHM_PERMISSIONS 0644
 
 struct SharedMemory {
