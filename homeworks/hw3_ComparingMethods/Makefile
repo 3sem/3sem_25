@@ -52,6 +52,9 @@ help:
 	@echo "  configure    		- Configure both options"
 	@echo "  run-debug    		- Run debug version"
 	@echo "  run-release  		- Run release version"
+	@echo "  list-src		- Show source files"
+	@echo "  build-src     	- Build single file (usage: make build-src FILE=filename)"
+	@echo "  run-src     		- Build and run single file (usage: make run-src FILE=filename)"
 	@echo "  clean-debug  		- Clear debug assemble"
 	@echo "  clean-release 	- Clear release assemble"
 	@echo "  clean     		- Clear all assemblies"
@@ -82,14 +85,14 @@ all: debug release
 configure-debug:
 	@echo "Config debug version..."
 	@mkdir -p $(DEBUG_BUILD_DIR)
-	@cd $(DEBUG_BUILD_DIR) && $(CMAKE) ../.. -DCMAKE_BUILD_TYPE=Debug $(CMAKE_FLAGS)
+	@cd $(DEBUG_BUILD_DIR) && $(CMAKE) $(PROJECT_ROOT) -DCMAKE_BUILD_TYPE=Debug $(CMAKE_FLAGS)
 
 # Config release version
 .PHONY: configure-release
 configure-release:
 	@echo "Config release version..."
 	@mkdir -p $(RELEASE_BUILD_DIR)
-	@cd $(RELEASE_BUILD_DIR) && $(CMAKE) ../.. -DCMAKE_BUILD_TYPE=Release $(CMAKE_FLAGS)
+	@cd $(RELEASE_BUILD_DIR) && $(CMAKE) $(PROJECT_ROOT) -DCMAKE_BUILD_TYPE=Release $(CMAKE_FLAGS)
 
 # Config both versions
 .PHONY: configure
@@ -106,6 +109,46 @@ run-debug: debug
 run-release: release
 	@echo "Run release version..."
 	@./$(RELEASE_BUILD_DIR)/$(PROJECT_NAME)
+
+# Show available source files in src
+.PHONY: list-src
+list-src:
+	@echo "=== Available source files in $(SOURCE_DIR)/ ==="
+	@if [ -d "$(SOURCE_DIR)" ]; then \
+		for file in $(SOURCE_DIR)/*.cpp $(SOURCE_DIR)/*.c; do \
+			if [ -f "$$file" ]; then \
+				filename=$$(basename "$$file"); \
+				echo "  $$filename"; \
+			fi; \
+		done; \
+	else \
+		echo "Source directory $(SOURCE_DIR) not found"; \
+	fi
+
+# Build single file using CMake
+.PHONY: build-src
+build-src: configure-debug
+	@if [ -z "$(FILE)" ]; then \
+		echo "Error: Please specify FILE parameter (filename without extension)"; \
+		echo "Usage: make build-src FILE=filename"; \
+		echo ""; \
+		echo "Available source files:"; \
+		$(MAKE) list-src; \
+		exit 1; \
+	fi
+	@echo "Building $(FILE) with CMake..."
+	@if cd $(DEBUG_BUILD_DIR) && $(CMAKE) --build . --target $(FILE); then \
+		echo "✓ Successfully built $(FILE)"; \
+	else \
+		echo "✗ Failed to build $(FILE) with CMake"; \
+		exit 1; \
+	fi
+
+# Run single file using CMake
+.PHONY: run-src
+run-src: build-src
+	@echo "Running $(FILE)..."
+	@./$(DEBUG_BUILD_DIR)/$(FILE)
 
 # Clear debug assemble
 .PHONY: clean-debug
