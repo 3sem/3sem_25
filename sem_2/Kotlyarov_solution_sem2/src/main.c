@@ -1,5 +1,5 @@
 #include "duplex_pipe.h"
-#include"Rdtscp.h"
+#include <time.h>
 
 const int Tmp_buf_size = 65536;
 int main() {
@@ -44,7 +44,8 @@ int main() {
 
         dplx_pipe->methods.close_unused_pipefd(dplx_pipe, PRNT_PIPE);
         int64_t curr_size_dir = 1, curr_size_rev = 1;
-        uint64_t start_time = Rdtscp();
+        struct timespec start, end;
+        clock_gettime(CLOCK_MONOTONIC, &start);
         do {
 
             if (curr_size_dir > 0) {  
@@ -85,11 +86,13 @@ int main() {
             }
         }
         while (curr_size_dir > 0 || curr_size_rev > 0); 
+        wait(NULL);
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        double time_taken = (end.tv_sec - start.tv_sec) + 
+                            (end.tv_nsec - start.tv_nsec) / 1e9;
         
         DEBUG_PRINTF("Parent->child && Parent<-child transmition succeeded\n");
-        
-        uint64_t end_time = Rdtscp();
-        DEBUG_PRINTF("Time consumed: %lu ms\n", end_time - start_time);
+        fprintf(stderr, "Time consumed = %.6f seconds\n", time_taken);
     }
 
     dplx_pipe->methods.dtor(dplx_pipe);
