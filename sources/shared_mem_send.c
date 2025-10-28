@@ -16,7 +16,7 @@ int call_shm_close (Shmem *mem);
 int call_shm_destroy (Shmem *self);
 int send_file_shm (Shmem *mem, const char *src_file, const char *dst_file);
 
-int assign_commands(Op_shmem *self) {
+int assign_commands_shm(Op_shmem *self) {
     if (!self) return -1;
 
     self->open  = call_shm_open;
@@ -46,7 +46,11 @@ Shmem *ctor_shm() {
     Shmem *mem;
 
     CALLOC_ERR(mem, 1, 0);
-    assign_commands(&mem->op);
+    if (assign_commands_shm(&mem->op) == -1) {
+        free(mem);
+        perror("assign commands error\n");
+        return 0;
+    }
     CALLOC_CTOR(mem->name, SHM_NAME_SIZE, mem, dtor_shm, 0);
     sprintf(mem->name, SHM_NAME_PREFIX "pid_%d_addr_%p", getpid(), mem);
 
@@ -62,7 +66,6 @@ int dtor_shm(Shmem *mem) {
 
     SET_ZERO(mem);
     free(mem);
-
     return 0;
 }
 
