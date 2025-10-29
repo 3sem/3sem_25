@@ -79,6 +79,7 @@ compare_fifo: $(TEXTES_FIFO) $(TEXTES);
 	@md5sum $(T_PREFIX)big
 	@md5sum $(T_PREFIX)big_recieved_fifo
 
+generate: $(TEXTES)
 
 main_shm: $(OBJECTS_SHM)
 	@mkdir -p $(B_PREFIX)

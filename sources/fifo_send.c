@@ -132,7 +132,7 @@ int send_file_fifo (Fifo *fifo, const char *src_file, const char *dst_file) {
 }
 
 int recieve_fifo(Fifo *fifo, int fd_in) {
-    int fd = open("aboba", O_CREAT | O_TRUNC | O_WRONLY, 0666);
+    int fd = open("text/recieve_checker", O_CREAT | O_TRUNC | O_WRONLY, 0666);
     SET_BLOCK(fd);
     int fd_out = fifo->fd;
     SET_BLOCK(fd_out);
@@ -141,26 +141,26 @@ int recieve_fifo(Fifo *fifo, int fd_in) {
     char eof = EOF;
     int res = 0;
 
-    printf("recieve started\n");
+    printf("\x1b[31m""recieve started\n""\x1b[0m");
     while (res != -1) {
         res = read(fd_in, fifo->buffer, FIFO_BUFFER_SIZE);
         write(fd, fifo->buffer, res);
-        printf("last char r %x\n", (fifo->buffer)[res - 1]);
+        printf("\x1b[31m""result recieved %d\n""\x1b[0m", res);
+        printf("\x1b[31m""last char recieved %.2hhx\n""\x1b[0m", (fifo->buffer)[res - 1]);
         if (res == 0) {
-            printf("result recieved %d\n", res);
+            printf("\x1b[31m""result recieved %d\n""\x1b[0m", res);
             write(fd_out, &eof, 1);
             break;
         }
-        printf("result recieved %d\n", res);
         write(fd_out, fifo->buffer, res);
     }
-    printf("recieve ended\n");
+    printf("\033[4m""\x1b[31m""recieve ended\n""\x1b[0m""\033[0m");
     close(fd);
     return 0;
 }
 
 int send_fifo(Fifo *fifo, int fd_out) {
-    int fd = open("aboba2", O_CREAT | O_TRUNC | O_WRONLY, 0666);
+    int fd = open("text/send_checker", O_CREAT | O_TRUNC | O_WRONLY, 0666);
     SET_BLOCK(fd);
     int fd_in = fifo->fd;
     SET_BLOCK(fd_out);
@@ -168,25 +168,26 @@ int send_fifo(Fifo *fifo, int fd_out) {
 
     int res = 0;
 
-    printf("send started\n");
+    printf("\x1b[32m""send started\n""\x1b[0m");
     while (res != -1) {
         res = read(fd_in, fifo->buffer, FIFO_BUFFER_SIZE);
-        printf("result send %d\n errno = %d\n", res, errno);
+        printf("\x1b[32m""result send %d\nerrno = %d\n""\x1b[0m", res, errno);
         if (res == -1) {
-            printf("ABOBA\n");
+            printf("\x1b[32m""Send sleep\n""\x1b[0m");
             SET_BLOCK(fd_in);
             res = read(fd_in, fifo->buffer, 1);
             SET_NONBLOCK(fd_in);
+            printf("\x1b[32m""result send %d\nerrno = %d\n""\x1b[0m", res, errno);
         }
         // write(fd, fifo->buffer, res);
-        printf("last char s %x\n", (fifo->buffer)[res - 1]);
+        printf("\x1b[32m""last char %.2hhx\n""\x1b[0m", (fifo->buffer)[res - 1]);
         if ((fifo->buffer)[res - 1] == (char)EOF) {
             write(fd_out, fifo->buffer, res - 1);
             break;
         }
         write(fd_out, fifo->buffer, res);
     }
-    printf("send ended\n");
+    printf("\033[4m""\x1b[32m""send ended\n""\x1b[32m""\033[0m");
     return 0;
 }
 

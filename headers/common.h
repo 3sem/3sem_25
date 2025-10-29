@@ -2,7 +2,7 @@
 #define COMMON
 
 #define CALLOC_SELF(x)                           \
-if (!(x = calloc(sizeof(*x), 1))) {              \
+if (!(x = calloc(1, sizeof(*x)))) {              \
     perror("calloc " #x "error");                \
     return 0;                                    \
 }
