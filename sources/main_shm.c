@@ -1,28 +1,26 @@
-#include <bits/types/struct_timeval.h>
 #include <stdio.h>
 #include <sys/time.h>
-#include <unistd.h>
 #include <stdint.h>
 
 #include "shared_mem_send.h"
 
 int main(int argc, char **argv) {
     if (argc != 3) {
-        perror("wrong file configuration for sared memory test\n");
+        perror("wrong file configuration for shared memory test\n");
         return -1;
     }
     char *src_file = argv[1];
     char *dst_file = argv[2];
-    
+
     Shmem *shared_memory = ctor_shm();
     shared_memory->op.open(shared_memory);
     // printf("shared memory created and opened\n");
-    
+
     struct timeval time_start, time_end, prog_time;
     gettimeofday(&time_start, NULL);
 
     shared_memory->op.send_file(shared_memory, src_file, dst_file);
-    
+
     gettimeofday(&time_end, NULL);
 
     // printf("shared memory, %s sended to %s\n", src_file, dst_file);
