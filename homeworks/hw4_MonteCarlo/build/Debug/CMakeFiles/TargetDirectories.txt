@@ -1,0 +1,4 @@
+/home/therobt/Documents/Projects/3sem_25/homeworks/hw4_MonteCarlo/build/Debug/CMakeFiles/main.dir
+/home/therobt/Documents/Projects/3sem_25/homeworks/hw4_MonteCarlo/build/Debug/CMakeFiles/MyProject.dir
+/home/therobt/Documents/Projects/3sem_25/homeworks/hw4_MonteCarlo/build/Debug/CMakeFiles/edit_cache.dir
+/home/therobt/Documents/Projects/3sem_25/homeworks/hw4_MonteCarlo/build/Debug/CMakeFiles/rebuild_cache.dir
