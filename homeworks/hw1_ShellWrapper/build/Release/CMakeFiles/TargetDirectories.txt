@@ -1,3 +1,9 @@
+<<<<<<< HEAD
 /Users/anatolij/Documents/GitHub/3sem_25/homeworks/hw1_ShellWrapper/build/Release/CMakeFiles/Shell-wrapper.dir
 /Users/anatolij/Documents/GitHub/3sem_25/homeworks/hw1_ShellWrapper/build/Release/CMakeFiles/edit_cache.dir
 /Users/anatolij/Documents/GitHub/3sem_25/homeworks/hw1_ShellWrapper/build/Release/CMakeFiles/rebuild_cache.dir
+=======
+/home/therobt/Documents/Projects/3sem_25/homeworks/hw1_ShellWrapper/build/Release/CMakeFiles/Shell-wrapper.dir
+/home/therobt/Documents/Projects/3sem_25/homeworks/hw1_ShellWrapper/build/Release/CMakeFiles/edit_cache.dir
+/home/therobt/Documents/Projects/3sem_25/homeworks/hw1_ShellWrapper/build/Release/CMakeFiles/rebuild_cache.dir
+>>>>>>> 13187b8 (hw4)
