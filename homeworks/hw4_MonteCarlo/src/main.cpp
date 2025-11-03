@@ -7,9 +7,10 @@
 #include <time.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <math.h>
 
 #define NUM_POINTS  1e9
-#define NUM_THREADS 1
+#define NUM_THREADS 50
 #define BILLION 1e9
 
 typedef double(*func_t)(double); 
@@ -51,69 +52,74 @@ int main() {
 	printf("B: ");
 	scanf("%lg", &b);
 	
-	pid_t pid = fork();	
-	if (pid < 0) {
-	 	perror("fork");
-		exit(EXIT_FAILURE);
-	}
-	if (pid == 0) {
-		double* shared_results = (double*)shmat(shmid, NULL, 0);
-		if (shared_results == (void*)-1) {
-		 	perror("shmat");
+	for (int num_threads = 1; num_threads < NUM_THREADS; num_threads++) {
+
+		pid_t pid = fork();	
+		if (pid < 0) {
+	 		perror("fork");
 			exit(EXIT_FAILURE);
 		}
+		if (pid == 0) {
+			double* shared_results = (double*)shmat(shmid, NULL, 0);
+			if (shared_results == (void*)-1) {
+		 		perror("shmat");
+				exit(EXIT_FAILURE);
+			}
 
-		pthread_t threads[NUM_THREADS] = {};
-		thread_data_t thread_data[NUM_THREADS] = {};
+			pthread_t* threads = (pthread_t*)calloc((size_t)num_threads, sizeof(pthread_t));
+			thread_data_t* thread_data = (thread_data_t*)calloc((size_t)num_threads, sizeof(thread_data_t));
 		
-		for (int i = 0; i < NUM_THREADS; i++) {
-			double cur_a = a + (b - a) / NUM_THREADS * i;
-			double cur_b = a + (b - a) / NUM_THREADS * (i + 1);
-			double cur_A = f(cur_a);
-			double cur_B = f(cur_b);
-			thread_data[i] = {.thread_id = i, .points_per_thread = NUM_POINTS, .func = f, .a = cur_a, 
-					  .b = cur_b, .y_max = (cur_A > cur_B ? cur_A : cur_B), .results = shared_results};
-			pthread_create(&threads[i], NULL, thread_calculate, (void*)(&thread_data[i]));
-		}
+			for (int i = 0; i < num_threads; i++) {
+				double cur_a = a + (b - a) / num_threads * i;
+				double cur_b = a + (b - a) / num_threads * (i + 1);
+				double cur_A = f(cur_a);
+				double cur_B = f(cur_b);
+				thread_data[i] = {.thread_id = i, .points_per_thread = (int)(NUM_POINTS / num_threads), .func = f, .a = cur_a, 
+						  .b = cur_b, .y_max = (cur_A > cur_B ? cur_A : cur_B), .results = shared_results};
+				pthread_create(&threads[i], NULL, thread_calculate, (void*)(&thread_data[i]));
+			}
 			
-		for (int i = 0; i < NUM_THREADS; i++)
-			pthread_join(threads[i], NULL);
+			for (int i = 0; i < num_threads; i++)
+				pthread_join(threads[i], NULL);
 		
-		shmdt(shared_results);
-		exit(EXIT_SUCCESS);
-	}
-	else {
-		double* shared_results = (double*)shmat(shmid, NULL, 0);
-		if (shared_results == (void*)-1) {
-		 	perror("shmat");
-			exit(EXIT_FAILURE);
+			shmdt(shared_results);
+			exit(EXIT_SUCCESS);
+		}
+		else {
+			double* shared_results = (double*)shmat(shmid, NULL, 0);
+			if (shared_results == (void*)-1) {
+			 	perror("shmat");
+				exit(EXIT_FAILURE);
+			}
+
+	 		if (clock_gettime(CLOCK_MONOTONIC, &start) == -1) {
+				perror("clock_gettime");
+				exit(EXIT_FAILURE);
+			}		
+
+			wait(NULL);
+
+			if (clock_gettime(CLOCK_MONOTONIC, &end) == -1) {
+				perror("clock_gettime");
+				exit(EXIT_FAILURE);
+			}
+
+			double total = 0;
+			for (int i = 0; i < num_threads; i++) 
+		 		total += shared_results[i];
+			printf("Answer: %.6f\n", total);
+
+			shmdt(shared_results);
 		}
 
-	 	if (clock_gettime(CLOCK_MONOTONIC, &start) == -1) {
-			perror("clock_gettime");
-			exit(EXIT_FAILURE);
-		}		
-
-		wait(NULL);
-
-		if (clock_gettime(CLOCK_MONOTONIC, &end) == -1) {
-			perror("clock_gettime");
-			exit(EXIT_FAILURE);
-		}
-
-		double total = 0;
-		for (int i = 0; i < NUM_THREADS; i++) 
-		 	total += shared_results[i];
-		printf("Answer: %.6f\n", total);
-
-		shmdt(shared_results);
+	
+        	transmission_time = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
+		printf("=== Time ===\nNumber of threads: %d - Overall transmission time: %lf seconds\n", num_threads, transmission_time);
+	
 	}
-
+	
 	shmctl(shmid, IPC_RMID, 0);
-	
-        transmission_time = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
-	printf("=== Time ===\nOverall transmission time: %lf seconds\n", transmission_time);
-	
+
 	exit(EXIT_SUCCESS);
 }
 
@@ -138,9 +144,6 @@ void *thread_calculate(void *args) {
 
 	thread_data->results[thread_data->thread_id] = (double)points_count / thread_data->points_per_thread * 
 							(thread_data->b - thread_data->a) * thread_data->y_max;
-
-	printf("Thread %d ends calculating: %d of %d points are under the curve\n",
-		thread_data->thread_id, points_count, thread_data->points_per_thread);
 
 	pthread_exit(NULL);
 }
