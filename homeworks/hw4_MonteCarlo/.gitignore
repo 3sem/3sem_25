@@ -12,3 +12,6 @@ lib/
 # Logs
 *.log
 logs/
+
+.gitignore
+.env
