@@ -10,6 +10,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(SOURCES
     src/main.c
     src/handlers.c
+    src/GetFileSize.c
 )
 
 add_executable(task5-signals ${SOURCES})

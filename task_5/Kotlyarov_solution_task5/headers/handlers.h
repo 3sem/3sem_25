@@ -14,11 +14,13 @@
 #include <sys/ipc.h>
 #include <stdbool.h>
 #include <time.h>
+#include "GetFileSize.h"
 #include "Debug_printf.h"
 
 #define CHUNKS 8
-static const int Shm_size = 1024 * 1024;
+static const int Shm_size = 1024*1024;
 static const int Chunk_size = Shm_size / CHUNKS;
+static const int Max_attempts = 100;
 
 #define SIG_PROD (SIGRTMIN + 2)
 #define SIG_CONS (SIGRTMIN + 1)
@@ -43,12 +45,18 @@ struct Shared_data {
 
     char* buffer;
     size_t buf_size;
+
     char* producer_chunks[CHUNKS];    
     struct Chunk_data consumer_chunks[CHUNKS];    
+
     pid_t pid;
     pid_t ppid;
     int producer_ended;
     int consumer_ended;
+
+    size_t file_size;
+    size_t bytes_read;
+    int attempts;
 };
 
 

@@ -10,6 +10,15 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    size_t file_size = get_file_size(argv[1]);
+    if (file_size <= 0) {
+
+        DEBUG_PRINTF("ERROR: invalid file size");
+        return 1;
+    }
+
+    //DEBUG_PRINTF("file_size = %zd\n", file_size);
+
     FILE* input_file = freopen(argv[1], "r", stdin);
     if (!input_file) {
 
@@ -24,7 +33,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    key_t shm_key = ftok(".", 'M');
+    key_t shm_key = ftok(".", 'S');
     if (shm_key == -1) {
 
         perror("ftok (shm)");
@@ -54,6 +63,8 @@ int main(int argc, char *argv[]) {
     sh_data->ppid = getpid();
     sh_data->producer_ended = NOT_ENDED;
     sh_data->consumer_ended = NOT_ENDED;
+    sh_data->file_size = file_size;
+    sh_data->attempts = 0;
 
     struct sigaction sa = {.sa_sigaction = producer_handler, .sa_flags = SA_SIGINFO};
     sigaction(SIG_PROD, &sa, NULL);

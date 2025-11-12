@@ -17,6 +17,11 @@ void producer_handler(int sig, siginfo_t *info, void *ucontext) {
     int chunk_num = info->si_value.sival_int;
 
     ssize_t curr_size = read(0, sh_data->producer_chunks[chunk_num], Chunk_size);
+    while (curr_size == 0 && sh_data->bytes_read < sh_data->file_size && sh_data->attempts < Max_attempts) {
+
+        curr_size = read(0, sh_data->producer_chunks[chunk_num], Chunk_size);
+        sh_data->attempts++;
+    }
     
     if (curr_size > 0) {
 
@@ -24,18 +29,24 @@ void producer_handler(int sig, siginfo_t *info, void *ucontext) {
         sh_data->consumer_chunks[chunk_num].chunk_size = curr_size;
         sigqueue(sh_data->pid, SIG_CONS, sv);
     }
-    
+
     else {
 
-        if (curr_size < 0) {
+        /*if (curr_size < 0) {
 
             DEBUG_PRINTF("ERROR: read\n");
             sh_data->producer_ended = PROD_END_FAIL;
+        }*/
+
+        if (sh_data->bytes_read == sh_data->file_size) {
+
+            sh_data->producer_ended = PROD_END_SUCC;
         }
 
         else {
 
-            sh_data->producer_ended = PROD_END_SUCC;
+            DEBUG_PRINTF("ERROR: read\n");
+            sh_data->producer_ended = PROD_END_FAIL;
         }
 
         struct sigaction sa;
@@ -43,7 +54,10 @@ void producer_handler(int sig, siginfo_t *info, void *ucontext) {
         sigemptyset(&sa.sa_mask);
         sigaction(SIG_PROD, &sa, NULL);
         //kill(sh_data->pid, SIG_EXIT);
+        return;
     }
+
+    sh_data->bytes_read += curr_size;
 }
 
 void consumer_handler(int sig, siginfo_t *info, void *ucontext) {
