@@ -6,44 +6,58 @@ bool parse_args(int argc, char* argv[], struct Daemon_cfg* cfg) {
 		return false;
 	}
 
-	if (argc < 4 || strcmp(argv[1], "-p")) {
-		print_usage(argv[0]);
-		return false;
-	}
+	if (argc < 2) {
+        print_usage(argv[0]);
+        return false;
+    }
 
-	const char *mode_flag = argv[3];
-	if (!strcmp(mode_flag, "-d")) {
-		cfg->mode = DAEMON_MODE;
-	} else if (!strcmp(mode_flag, "-i")) {
-		cfg->mode = INTERACTIVE_MODE;
-	} else {
-		cfg->mode = NO_MODE;
-		print_usage(argv[0]);
-		return false;
-	}
+    cfg->target_pid = 0;
+    cfg->mode = NO_MODE;
+    cfg->is_running = 1;
+    cfg->last_snapshot = NULL;
 
-	char *endptr;
-	long pid_value = strtol(argv[2], &endptr, 10);
-	if (*endptr != '\0' || pid_value <= 0) {
-		DEBUG_PRINTF("Invalid PID: %s\n", argv[2]);
-		print_usage(argv[0]);
-		return false;
-	}
-	cfg->target_pid = (pid_t)pid_value;
-
-	if (argc >= 6 && !strcmp(argv[4], "-T")) {
-		long time_value = strtol(argv[5], &endptr, 10);
-		if (*endptr != '\0' || time_value <= 0) {
-			DEBUG_PRINTF("Invalid time: %s\n", argv[5]);
-			print_usage(argv[0]);
-            return false;
-		} else if (time_value < MIN_TIME_INTERVAL || time_value > MAX_TIME_INTERVAL) {
-            DEBUG_PRINTF("Wrong sample interval: time must belong tp [%u us;%u us]",
-                          MIN_TIME_INTERVAL, MAX_TIME_INTERVAL); 
+	for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
+            char *endptr;
+            long pid_value = strtol(argv[++i], &endptr, 10);
+            if (*endptr != '\0' || pid_value <= 0) {
+                printf("Invalid PID: %s\n", argv[i]);
+                return false;
+            }
+            cfg->target_pid = (pid_t)pid_value;
         }
-		cfg->sample_interval = (useconds_t)time_value;
-	} else {
-		cfg->sample_interval = DEFAULT_SAMPLE_INTERVAL;
+        else if (strcmp(argv[i], "-i") == 0) {
+            cfg->mode = INTERACTIVE_MODE;
+        }
+        else if (strcmp(argv[i], "-d") == 0) {
+            cfg->mode = DAEMON_MODE;
+        }
+        else if (strcmp(argv[i], "-T") == 0 && i + 1 < argc) {
+            char *endptr;
+            long time_value = strtol(argv[++i], &endptr, 10);
+            if (*endptr != '\0' || time_value <= 0) {
+                printf("Invalid time: %s\n", argv[i]);
+                return false;
+            }
+            cfg->sample_interval = (useconds_t)time_value;
+        }
+        else {
+            printf("Unknown argument: %s\n", argv[i]);
+            print_usage(argv[0]);
+            return false;
+        }
+    }
+
+    if (cfg->target_pid == 0) {
+        printf("Error: PID is required\n");
+        print_usage(argv[0]);
+        return false;
+    }
+
+    if (cfg->mode == NO_MODE) {
+        printf("Error: mode (-i or -d) is required\n");
+        print_usage(argv[0]);
+        return false;
     }
 
 	return true;

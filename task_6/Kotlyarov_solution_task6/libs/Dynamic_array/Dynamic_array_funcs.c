@@ -71,7 +71,7 @@ bool Dynamic_array_pop_back(Dynamic_array *array, int size) {
         return false;
     }
 
-    if (array->size < size) {
+    if (array->size < (uint64_t) size) {
 
         fprintf(stderr, "Error: array size is less than element\n");
         return false;

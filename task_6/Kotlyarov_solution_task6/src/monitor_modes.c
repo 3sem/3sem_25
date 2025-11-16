@@ -37,7 +37,7 @@ void handle_interactive_command(const char* cmd, struct Daemon_cfg* config) {
     }
     else if (strcmp(clean_cmd, "status") == 0) {
         printf("Current PID: %d\n", config->target_pid);
-        printf("Sample interval: %d us\n", config->sample_interval);
+        printf("Sample interval: %u us\n", config->sample_interval);
         printf("Status: %s\n", config->is_running ? "running" : "stopped");
     }
     else if (strncmp(clean_cmd, "interval ", 9) == 0) {
@@ -75,8 +75,10 @@ void handle_interactive_command(const char* cmd, struct Daemon_cfg* config) {
 }
 
 int interactive_mode(struct Daemon_cfg* config) {
-    printf("run in interactive mode, PID: %d\n", config->target_pid);
-    printf("Insert 'help' to list commands\n");
+    if (!config) return -1;
+
+    printf("Run in interactive mode, PID: %d\n", config->target_pid);
+    printf("Press 'q' to quit, 'help' for commands\n");
     printf(">>> ");
     fflush(stdout);
 
@@ -85,11 +87,15 @@ int interactive_mode(struct Daemon_cfg* config) {
     char cmd_buffer[256] = {0};
     int cmd_pos = 0;
     
-    if (config->last_snapshot) {
-        free_maps_snapshot(config->last_snapshot);
-    }
     config->last_snapshot = read_maps_snapshot(config->target_pid);
+    if (!config->last_snapshot) {
+        printf("ERROR: Failed to read initial snapshot for PID %d\n", config->target_pid);
+        set_nonblocking_mode(0);
+        return -1;
+    }
 
+    unsigned long last_check = get_current_time_ms();
+    
     while (config->is_running) {
         if (ready_to_read()) {
             char ch = getchar();
@@ -114,10 +120,9 @@ int interactive_mode(struct Daemon_cfg* config) {
             }
         }
         
-        static unsigned long last_check = 0;
         unsigned long current_time = get_current_time_ms();
         
-        if (current_time - last_check >= config->sample_interval) {
+        if (current_time - last_check >= (config->sample_interval / 1000)) {
             struct Maps_snapshot* current = read_maps_snapshot(config->target_pid);
             if (current) {
                 print_changes(config->last_snapshot, current);
@@ -126,7 +131,6 @@ int interactive_mode(struct Daemon_cfg* config) {
                     free_maps_snapshot(config->last_snapshot);
                 }
                 config->last_snapshot = current;
-                
                 last_check = current_time;
             }
         }
@@ -134,8 +138,13 @@ int interactive_mode(struct Daemon_cfg* config) {
         usleep(10000);
     }
     
+    if (config->last_snapshot) {
+        free_maps_snapshot(config->last_snapshot);
+        config->last_snapshot = NULL;
+    }
+    
     set_nonblocking_mode(0);
-    printf("\nExiting interactive mode...\n");
+    printf("\nExiting interactive mode\n");
     return 0;
 }
 

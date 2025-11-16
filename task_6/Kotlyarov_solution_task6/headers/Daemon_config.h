@@ -10,6 +10,7 @@
 #include <time.h>
 #include <string.h>
 #include <stdbool.h>
+#include "Debug_printf.h"
 #include "Dynamic_array_funcs.h"
 
 #define PATH_MAX 256
@@ -23,9 +24,9 @@ enum Mode {
 
 enum Parse_status {
     
-    PARSE_SUCCESS = 0x5AFE;
-    PARSE_FAILED = 0xDEAD;
-}
+    PARSE_SUCCESS = 0x5AFE,
+    PARSE_FAILED = 0xDEAD
+};
 
 struct Memory_map {
     unsigned long start_addr;
@@ -44,10 +45,10 @@ struct Maps_snapshot {
 
 struct Daemon_cfg {
     pid_t target_pid;
-    int sample_interval; // us
+    useconds_t sample_interval; // us
     int is_running;
     int mode;
     char backup_dir[PATH_MAX];
-    struct maps_snapshot last_snapshot;
+    struct Maps_snapshot* last_snapshot;
 };
 #endif

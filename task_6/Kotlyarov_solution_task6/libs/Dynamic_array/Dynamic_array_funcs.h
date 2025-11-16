@@ -9,8 +9,8 @@
 
 struct Dynamic_array {
     char*  data;
-    uint32_t size;
-    uint32_t capacity;
+    uint64_t size;
+    uint64_t capacity;
     int fill_byte;
 };
 

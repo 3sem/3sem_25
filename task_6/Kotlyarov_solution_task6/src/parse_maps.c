@@ -11,23 +11,17 @@ struct Maps_snapshot* read_maps_snapshot(pid_t pid) {
 
     if (!Dynamic_array_ctor(&snapshot->maps, sizeof(struct Memory_map) * INIT_MAPS_COUNT, 0)) {
         free(snapshot);
-        return NULL
+        return NULL;
     }
     
     char maps_path[MAX_MAPS_PATH_LEN];
     snprintf(maps_path, sizeof(maps_path), "/proc/%d/maps", pid);
 
-    int64_t file_size = get_file_size(maps_path);
-    if (file_size < 0) {
-        DEBUG_PRINTF("ERROR: returned negative size");
-        Dynamic_array_dtor(&snapshot->maps);  
-        free(snapshot);
-        return NULL;
-    }
-    
     FILE *file = fopen(maps_path, "r");
     if (!file) {
-        perror("ERROR: failed to open file");
+        DEBUG_PRINTF("ERROR: failed to open file");
+        Dynamic_array_dtor(&snapshot->maps);  
+        free(snapshot);
         return NULL;
     }
 
@@ -35,48 +29,35 @@ struct Maps_snapshot* read_maps_snapshot(pid_t pid) {
     size_t line_len = 0;
     ssize_t read = 0;
     int line_num = 0;
-    long prev_file_pos = 0, curr_file_pos = 0;
-    while ((read = getline(&line, &line_len, file)) != -1) {
-        read = getline(&line, &line_len, file);
-        if (read == -1) {
-            DEBUG_PRINTF("ERROR: getline failed");
-            return NULL;
-        }
 
+    while ((read = getline(&line, &line_len, file)) != -1) {
         if (read <= 1) continue;
 
-        ++line_num; 
+        if (line[read - 1] == '\n') line[read - 1] = '\0';
     
+        struct Memory_map map = {};
         if (parse_maps_line(line, read, &map) == PARSE_SUCCESS) {
             Dynamic_array_push_back(&snapshot->maps, &map, sizeof(map));
-        } else {
-            curr_file_pos = ftell(file);
-            if(curr_file_pos == -1) {
-                DEBUG_PRINTF("ERROR: ftell failed");
-                return NULL;
-            } else if (curr_file_pos == file_size) {
-                break;
-            } else if(curr_file_pos == prev_file_pos) {
-                DEBUG_PRINTF("ERROR: getline stuck");
-                return NULL;
-            }
+            ++line_num; 
         } 
     }
-
-    free(line);
-    fclose(file);
     
-    if (read == -1) {
-        DEBUG_PRINTF("ERROR: getline failed");
-    }
+    free(line);
 
+    if (ferror(file) || line_num == 0) {
+        fclose(file);
+        DEBUG_PRINTF("ERROR: getline failed");
+        Dynamic_array_dtor(&snapshot->maps);
+        free(snapshot);
+        return NULL;
+    }
+    
+    fclose(file);
     return snapshot;
 }
 
-int parse_maps_line(const char *line, size_t line_len, Dynamic_array* maps) {
-    struct Memory_map map = {};
-
-    if (!line || !maps) {
+int parse_maps_line(const char *line, size_t line_len, struct Memory_map* map) {
+    if (!line || !map) {
         DEBUG_PRINTF("ERROR: nullptr in parse_maps_line_safe\n");
         return PARSE_FAILED;
     }
@@ -97,48 +78,53 @@ int parse_maps_line(const char *line, size_t line_len, Dynamic_array* maps) {
     if (newline) *newline = '\0';
 
     int result = PARSE_SUCCESS;
+    char *saveptr = NULL;
+    char *token = strtok_r(line_copy, " ", &saveptr);
 
-    if (parse_map_addresses(line, &map) == PARSE_FAILED) {
+    if (!token || parse_map_addresses(token, map) == PARSE_FAILED) {
         result = PARSE_FAILED;
         goto cleanup;
     }
 
-    if (parse_permissions(&map) == PARSE_FAILED) {
+    token = strtok_r(NULL, " ", &saveptr);
+    if (!token || parse_permissions(token, map) == PARSE_FAILED) {
         result = PARSE_FAILED;
         goto cleanup;
     }
 
-    if (parse_offset(&map) == PARSE_FAILED) {
+    token = strtok_r(NULL, " ", &saveptr);
+    if (!token || parse_offset(token, map) == PARSE_FAILED) {
         result = PARSE_FAILED;
         goto cleanup;
     }
 
-    if (parse_devices(&map) == PARSE_FAILED) {
+    token = strtok_r(NULL, " ", &saveptr);
+    if (!token || parse_devices(token, map) == PARSE_FAILED) {
         result = PARSE_FAILED;
         goto cleanup;
     }
     
-    if (parse_inode(&map) == PARSE_FAILED) {
+    token = strtok_r(NULL, " ", &saveptr);
+    if (!token || parse_inode(token, map) == PARSE_FAILED) {
         result = PARSE_FAILED;
         goto cleanup;
     }
 
-    if (parse_pathname(&map) == PARSE_FAILED) {
-        result = PARSE_FAILED;
-        goto cleanup;
+    token = strtok_r(NULL, "", &saveptr);
+    if (token) {
+        parse_pathname(token, map);
+    } else {
+        map->pathname[0] = '\0';
     }
-
-    Dynamic_array_push_back(maps, &map, sizeof(map));
 
 cleanup:
     free(line_copy);
-    return result;  
+    return result;    
 }
 
-int parse_map_addresses(char* line, struct Memory_map* map) {
-    char *addr_range = strtok(line, " ");
-    if (!addr_range) {
-        DEBUG_PRINTF("ERROR: addresses range was not found\n");
+int parse_map_addresses(char* addr_range, struct Memory_map* map) {
+    if (!addr_range || !map) {
+        DEBUG_PRINTF("ERROR: nullptr in parse_map_addresses\n");
         return PARSE_FAILED;
     }
 
@@ -165,10 +151,9 @@ int parse_map_addresses(char* line, struct Memory_map* map) {
     return PARSE_SUCCESS;
 }
 
-int parse_permissions(struct Memory_map* map) {
-    char *perms = strtok(NULL, " ");
-    if (!perms) {
-        DEBUG_PRINTF("ERROR: permissions were not found\n");
+int parse_permissions(char* perms, struct Memory_map* map) {
+    if (!perms || !map) {
+        DEBUG_PRINTF("ERROR: nullptr in parse_map_addresses\n");
         return PARSE_FAILED;
     }
 
@@ -178,39 +163,39 @@ int parse_permissions(struct Memory_map* map) {
     }
 
     for (int i = 0; i < 4; i++) {
-        if (perms[i] != 'r' && perms[i] != 'w' && perms[i] != 'x' && perms[i] != 'p' && perms[i] != '-') {
-            DEBUG_PRINTF("ERROR: invalid char in permissions: %c\n", perms[i]);
-            return PARSE_FAILED;
+        if (i < 3) {
+            if (perms[i] != 'r' && perms[i] != 'w' && perms[i] != 'x' && perms[i] != '-') 
+                return PARSE_FAILED;
+        } else {
+            if (perms[i] != 'p' && perms[i] != 's') 
+                return PARSE_FAILED;
         }
     }
 
     strncpy(map->permissions, perms, 4);
     map->permissions[4] = '\0';
-
     return PARSE_SUCCESS;
 }
 
-int parse_offset(struct Memory_map* map) {
-    char *offset_str = strtok(NULL, " ");
-    if (!offset_str) {
-        DEBUG_PRINTF("ERROR: не найден offset\n");
+int parse_offset(char* offset_str, struct Memory_map* map) {
+    if (!offset_str || !map) {
+        DEBUG_PRINTF("ERROR: nullptr in parse_offset\n");
         return PARSE_FAILED;
     }
 
     char* endptr;
     map->offset = strtoul(offset_str, &endptr, 16);
     if (endptr == offset_str || *endptr != '\0') {
-        DEBUG_PRINTF("ERROR: некорректный offset: %s\n", offset_str);
+        DEBUG_PRINTF("ERROR: invalid offset: %s\n", offset_str);
         return PARSE_FAILED;
     }
 
     return PARSE_SUCCESS;
 }
 
-int parse_devices(struct Memory_map* map) {
-    char *dev_str = strtok(NULL, " ");
-    if (!dev_str) {
-        DEBUG_PRINTF("ERROR: devices were not found\n");
+int parse_devices(char* dev_str, struct Memory_map* map) {
+    if (!dev_str || !map) {
+        DEBUG_PRINTF("ERROR: nullptr in parse_devices\n");
         return PARSE_FAILED;
     }
 
@@ -239,33 +224,31 @@ int parse_devices(struct Memory_map* map) {
     return PARSE_SUCCESS;
 }
 
-int parse_inode(struct Memory_map* map) {
-    char *inode_str = strtok(NULL, " ");
-    if (!inode_str) {
-        DEBUG_PRINTF("ERROR: не найден inode\n");
+int parse_inode(char* inode_str, struct Memory_map* map) {
+    if (!inode_str || !map) {
+        DEBUG_PRINTF("ERROR: nullptr in parse_inode\n");
         return PARSE_FAILED;
     }
 
     char* endptr;
     map->inode = strtoul(inode_str, &endptr, 10);
     if (endptr == inode_str || (*endptr != '\0' && *endptr != ' ')) {
-        DEBUG_PRINTF("ERROR: некорректный inode: %s\n", inode_str);
+        DEBUG_PRINTF("ERROR: invalid inode: %s\n", inode_str);
         return PARSE_FAILED;
     }
     
     return PARSE_SUCCESS;
 }
 
-int parse_pathname(struct Memory_map* map) {
-    char *pathname = strtok(NULL, "");
+int parse_pathname(char* pathname, struct Memory_map* map) {
     if (pathname) {
         while (*pathname == ' ') pathname++;
 
         if (*pathname != '\0') {
             size_t path_len = strlen(pathname);
-            if (path_len >= MAX_PATH_LENGTH) {
+            if (path_len >= MAX_PATH_LEN) {
                 DEBUG_PRINTF("WARNIN: pathname is too large, will be cut off: %s\n", pathname);
-                path_len = MAX_PATH_LENGTH - 1;
+                path_len = MAX_PATH_LEN - 1;
             }
 
             strncpy(map->pathname, pathname, path_len);
@@ -285,4 +268,10 @@ void free_maps_snapshot(struct Maps_snapshot* snapshot) {
         Dynamic_array_dtor(&snapshot->maps);
         free(snapshot);
     }
+}
+
+unsigned long get_current_time_ms() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
 }
