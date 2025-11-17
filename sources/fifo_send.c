@@ -2,18 +2,17 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-#include <memory.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
-#include <errno.h>
 
 #include "fifo_send.h"
 #include "common.h"
 
-int recieve_fifo (Fifo *fifo, int fd_in);
-int send_fifo (Fifo *fifo, int fd_out);
+int recieve_fifo (Fifo *fifo, int fd, int size);
+int send_fifo    (Fifo *fifo, int fd, int size);
 int open_fifo  (Fifo *fifo);
 int close_fifo (Fifo *fifo);
 
@@ -72,6 +71,9 @@ int send_file_fifo (Fifo *fifo, const char *src_file, const char *dst_file) {
         perror("no fifo object\n");
         return -1;
     }
+
+    fifo->op.open(fifo);
+
     if (!src_file || !dst_file) {
         perror("broken names\n");
         return -1;
@@ -89,7 +91,10 @@ int send_file_fifo (Fifo *fifo, const char *src_file, const char *dst_file) {
         return -1;
     }
 
+    int size = get_file_size(src_file);
+
     pid_t pid1 = fork();
+
     if (pid1 == -1) {
         close(fd_src);
         close(fd_dst);
@@ -98,7 +103,7 @@ int send_file_fifo (Fifo *fifo, const char *src_file, const char *dst_file) {
 
     } else if (pid1 == 0) {
         close(fd_src);
-        int result = send_fifo(fifo, fd_dst);
+        int result = send_fifo(fifo, fd_dst, size);
         dtor_fifo(fifo);
         close(fd_dst);
 
@@ -110,13 +115,13 @@ int send_file_fifo (Fifo *fifo, const char *src_file, const char *dst_file) {
     if (pid2 == -1) {
         close(fd_src);
         close(fd_dst);
-        kill(pid1, SIGRTMIN);
+        kill(pid1, SIGINT);
         perror("fork send failed (fifo)\n");
         return -1;
 
     } else if (pid2 == 0) {
         close(fd_dst);
-        int result = recieve_fifo(fifo, fd_src);
+        int result = recieve_fifo(fifo, fd_src, size);
         dtor_fifo(fifo);
         close(fd_src);
 
@@ -126,68 +131,67 @@ int send_file_fifo (Fifo *fifo, const char *src_file, const char *dst_file) {
     }
     close(fd_dst);
     close(fd_src);
-    waitpid(pid1, NULL, 0);
     waitpid(pid2, NULL, 0);
+    waitpid(pid1, NULL, 0);
     return 0;
 }
 
-int recieve_fifo(Fifo *fifo, int fd_in) {
-    int fd = open("text/recieve_checker", O_CREAT | O_TRUNC | O_WRONLY, 0666);
-    SET_BLOCK(fd);
+int recieve_fifo(Fifo *fifo, int fd, int size) {
+    if (!fifo) {
+        perror("no fifo object\n");
+        return -1;
+    }
+
+    int fd_in  = fd;
     int fd_out = fifo->fd;
     SET_BLOCK(fd_out);
-    SET_NONBLOCK(fd_in);
+    SET_BLOCK(fd_in);
 
-    char eof = EOF;
-    int res = 0;
-
-    printf("\x1b[31m""recieve started\n""\x1b[0m");
-    while (res != -1) {
-        res = read(fd_in, fifo->buffer, FIFO_BUFFER_SIZE);
-        write(fd, fifo->buffer, res);
-        printf("\x1b[31m""result recieved %d\n""\x1b[0m", res);
-        printf("\x1b[31m""last char recieved %.2hhx\n""\x1b[0m", (fifo->buffer)[res - 1]);
-        if (res == 0) {
-            printf("\x1b[31m""result recieved %d\n""\x1b[0m", res);
-            write(fd_out, &eof, 1);
-            break;
+    printf("\x1b[34m""recieve started\n""\x1b[0m");
+    while (size > 0) {
+        if ((fifo->size = read(fd_in, fifo->buffer, FIFO_BUFFER_SIZE)) == -1) {
+            printf("\x1b[34m""ERROR IN read recieve; errno = %d\n""\x1b[0m", errno);
+            return -1;
         }
-        write(fd_out, fifo->buffer, res);
+        size -= fifo->size;
+        printf("\x1b[34m""sended = %d\n""\x1b[0m", fifo->size);
+        if (write(fd_out, fifo->buffer, fifo->size) == -1) {
+            printf("\x1b[34m""ERROR IN write recieve; errno = %d\n""\x1b[0m", errno);
+            return -1;
+        }
+        fifo->size = 0;
     }
-    printf("\033[4m""\x1b[31m""recieve ended\n""\x1b[0m""\033[0m");
-    close(fd);
+    printf("\033[4m""\x1b[34m""recieve ended\n""\x1b[0m""\033[0m");
+
     return 0;
 }
+int send_fifo(Fifo *fifo, int fd, int size) {
+    if (!fifo) {
+        perror("no fifo object\n");
+        return -1;
+    }
 
-int send_fifo(Fifo *fifo, int fd_out) {
-    int fd = open("text/send_checker", O_CREAT | O_TRUNC | O_WRONLY, 0666);
-    SET_BLOCK(fd);
-    int fd_in = fifo->fd;
+    int fd_in  = fifo->fd;
+    int fd_out = fd;
     SET_BLOCK(fd_out);
-    SET_NONBLOCK(fd_in);
-
-    int res = 0;
+    SET_BLOCK(fd_in);
 
     printf("\x1b[32m""send started\n""\x1b[0m");
-    while (res != -1) {
-        res = read(fd_in, fifo->buffer, FIFO_BUFFER_SIZE);
-        printf("\x1b[32m""result send %d\nerrno = %d\n""\x1b[0m", res, errno);
-        if (res == -1) {
-            printf("\x1b[32m""Send sleep\n""\x1b[0m");
-            SET_BLOCK(fd_in);
-            res = read(fd_in, fifo->buffer, 1);
-            SET_NONBLOCK(fd_in);
-            printf("\x1b[32m""result send %d\nerrno = %d\n""\x1b[0m", res, errno);
+    while (size > 0) {
+        if ((fifo->size = read(fd_in, fifo->buffer, FIFO_BUFFER_SIZE)) == -1) {
+            printf("\x1b[32m""ERROR IN read send; errno = %d\n""\x1b[0m", errno);
+            return -1;
         }
-        // write(fd, fifo->buffer, res);
-        printf("\x1b[32m""last char %.2hhx\n""\x1b[0m", (fifo->buffer)[res - 1]);
-        if ((fifo->buffer)[res - 1] == (char)EOF) {
-            write(fd_out, fifo->buffer, res - 1);
-            break;
+        size -= fifo->size;
+        printf("\x1b[32m""sended = %d\n""\x1b[0m", fifo->size);
+        if (write(fd_out, fifo->buffer, fifo->size) == -1) {
+            printf("\x1b[32m""ERROR IN write send; errno = %d\n""\x1b[0m", errno);
+            return -1;
         }
-        write(fd_out, fifo->buffer, res);
-    }
+        fifo->size = 0;
+    };
     printf("\033[4m""\x1b[32m""send ended\n""\x1b[32m""\033[0m");
+
     return 0;
 }
 

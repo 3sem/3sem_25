@@ -17,7 +17,6 @@ int main(int argc, char **argv) {
     Fifo *fifo = ctor_fifo();
     printf("buf %p fd %d name %s size%d\n",
          fifo->buffer, fifo->fd, fifo->name, fifo->size);
-    fifo->op.open(fifo);
 
     printf("fifo created and opened\n");
 

@@ -1,12 +1,10 @@
-#include <memory.h>
-#include <pthread.h>
-#include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/mman.h>
 #include <fcntl.h>
-#include <unistd.h>
+#include <memory.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "shared_mem_send.h"
 #include "common.h"
@@ -51,8 +49,6 @@ Shmem *ctor_shm() {
         perror("assign commands error\n");
         return 0;
     }
-    CALLOC_DTOR(mem->name, SHM_NAME_SIZE, mem, dtor_shm, 0);
-    sprintf(mem->name, SHM_NAME_PREFIX "pid_%d_addr_%p", getpid(), mem);
 
     return mem;
 }
@@ -60,11 +56,6 @@ int dtor_shm(Shmem *mem) {
     if (!mem) return 0;
 
     if (mem->op.close(mem) == -1) perror("close shm error\n");
-
-    if (mem->name) {
-        memset(mem->name, 0, SHM_NAME_SIZE);
-        free(mem->name);
-    }
 
     SET_ZERO(mem);
     free(mem);
@@ -77,21 +68,8 @@ int call_shm_open(Shmem *mem) {
         perror("no mem object\n");
         return -1;
     }
-    if (mem->fd != 0) {
-        perror("mem fd already exists\n");
-        return -1;
-    }
 
-    if ((mem->fd = shm_open(mem->name, O_CREAT | O_RDWR, 0666)) < 0) {
-        perror("open shared memory error\n");
-        return -1;
-    }
-    if (ftruncate(mem->fd, SHM_SIZE) == -1) {
-        perror("ftruncate error\n");
-        return -1;
-    }
-
-    if ((mem->self = mmap(0, SHM_SIZE, PROT_WRITE, MAP_SHARED, mem->fd, 0)) == MAP_FAILED) {
+    if ((mem->self = mmap(0, SHM_SIZE, PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, 0, 0)) == MAP_FAILED) {
         perror("mmap error\n");
         return -1;
     }
@@ -107,7 +85,6 @@ int call_shm_close(Shmem *mem) {
         perror("no mem object (close)\n");
         return -1;
     }
-    if (mem->fd <= 0) return 0;
 
     if (munmap(mem->self, SHM_SIZE) == -1) {
         perror("munmap error\n");
@@ -115,19 +92,12 @@ int call_shm_close(Shmem *mem) {
     }
 
     mem->self = NULL;
-    close(mem->fd);
-    mem->fd = 0;
 
     return 0;
 }
 int call_shm_destroy(Shmem *mem) {
     if (!mem) {
         perror("no mem object\n");
-        return -1;
-    }
-
-    if (mem->fd <= 0) {
-        perror("memory fd not exist\n");
         return -1;
     }
 
@@ -139,8 +109,6 @@ int call_shm_destroy(Shmem *mem) {
     SET_ZERO(mem->self);
 
     mem->op.close(mem);
-
-    shm_unlink(mem->name);
 
     dtor_shm(mem);
 

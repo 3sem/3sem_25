@@ -1,7 +1,7 @@
 #ifndef QUEUE_SEND
 #define QUEUE_SEND
 
-#define QUEUE_SIZE 65536
+#define QUEUE_SIZE 8192
 
 typedef struct op_message_queue_t Queue;
 typedef struct op_message_queue_t Op_queue;

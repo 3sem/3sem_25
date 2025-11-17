@@ -1,6 +1,8 @@
 #ifndef COMMON
 #define COMMON
 
+#include<memory.h>
+
 #define CALLOC_SELF(x)                           \
 if (!(x = calloc(1, sizeof(*x)))) {              \
     perror("calloc " #x "error");                \
@@ -33,5 +35,6 @@ if (!(x = calloc(size, sizeof(*x)))) {           \
 #define SET_ZERO(x) memset(x, 0, sizeof(*x))
 
 int write_result(int fd_in);
+int get_file_size(const char *file_name);
 
 #endif

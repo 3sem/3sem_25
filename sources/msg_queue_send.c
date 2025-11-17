@@ -10,7 +10,7 @@
 
 int open_Queue  (Queue *Queue_);
 int close_Queue (Queue *Queue_);
-int recieve    (Queue *Queue_); 
+int recieve    (Queue *Queue_);
 int send       (Queue *Queue_);
 
 int assign_commands(Op_queue *self) {

@@ -1,7 +1,7 @@
 #ifndef FIFO_SEND
 #define FIFO_SEND
 
-#define FIFO_BUFFER_SIZE (1<<16)
+#define FIFO_BUFFER_SIZE (1<<20)
 #define FIFO_NAME_PREFIX "file_fifo_"
 #define FIFO_NAME_SIZE 64
 

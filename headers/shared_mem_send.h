@@ -32,8 +32,6 @@ struct shared_memory_t {
 };
 
 struct shared_memory_wrap_t {
-    int fd;
-    char* name;
     Shmem_ *self;
     Op_shmem op;
 };
