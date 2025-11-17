@@ -6,6 +6,7 @@
 #include <time.h>
 #include <errno.h>
 #include "parse_maps.h"
+#include "maps_diff.h"
 
 #define BACKUP_DIR "backups"
 #define FULL_BACKUP_SUBDIR "full"

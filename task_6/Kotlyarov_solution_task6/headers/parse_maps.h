@@ -4,11 +4,10 @@
 #include <ctype.h>
 #include <sys/time.h>
 #include "Daemon_config.h"
-#include "GetFileSize.h"
 
 #define INIT_MAPS_COUNT 32
 #define MAX_MAPS_PATH_LEN 64
-#define MAX_PATH_LEN 128
+#define MAX_PATH_LEN 256
 #define MAX_LINE_LENGTH 256
 
 struct Maps_snapshot* read_maps_snapshot(pid_t pid);

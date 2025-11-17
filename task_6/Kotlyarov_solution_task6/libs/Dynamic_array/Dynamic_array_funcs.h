@@ -9,8 +9,8 @@
 
 struct Dynamic_array {
     char*  data;
-    uint64_t size;
-    uint64_t capacity;
+    size_t size;
+    size_t capacity;
     int fill_byte;
 };
 
@@ -19,8 +19,8 @@ static const int Expansion_coeff = 2;
 
 bool Dynamic_array_ctor(Dynamic_array *array, size_t initial_capacity, int fill_byte);
 void Dynamic_array_dtor(Dynamic_array *array);
-bool _Dynamic_array_resize_if_needed(Dynamic_array *array, int size);
-void Dynamic_array_push_back(Dynamic_array *array, const void* element, int size);
+bool _Dynamic_array_resize_if_needed(Dynamic_array *array, size_t size);
+bool Dynamic_array_push_back(Dynamic_array *array, const void* element, int size);
 bool Dynamic_array_pop_back(Dynamic_array *array, int size);
 void Dynamic_array_resize(Dynamic_array *array, size_t size_to_add);
 

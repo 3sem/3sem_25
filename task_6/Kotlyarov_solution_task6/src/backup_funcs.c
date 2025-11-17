@@ -27,6 +27,16 @@ int create_backup_dirs(void) {
     return BACKUP_SUCCESS;
 }
 
+static void safe_strncpy(char* dest, const char* src, size_t dest_size) {
+    if (!dest || !src || dest_size == 0) return;
+    
+    size_t i;
+    for (i = 0; i < dest_size - 1 && src[i] != '\0'; i++) {
+        dest[i] = src[i];
+    }
+    dest[i] = '\0';
+}
+
 int save_full_backup(const struct Maps_snapshot* snapshot, pid_t pid) {
     if (!snapshot) return BACKUP_FAILED;
     
@@ -50,14 +60,23 @@ int save_full_backup(const struct Maps_snapshot* snapshot, pid_t pid) {
     fprintf(file, "# Total mappings: %zu\n\n", snapshot->maps.size);
     
     for (size_t i = 0; i < snapshot->maps.size; i++) {
-        struct Memory_map* map = (struct Memory_map*)Dynamic_array_get(&snapshot->maps, i);
+        struct Memory_map* map = safe_get_mapping(&snapshot->maps, i);
         if (map) {
-            fprintf(file, "%lx-%lx %s %lx %s %lu",
-                   map->start_addr, map->end_addr, map->permissions,
-                   map->offset, map->dev, map->inode);
+            char safe_permissions[5] = {0};
+            char safe_dev[12] = {0};
+            char safe_pathname[MAX_PATH_LEN] = {0};
             
-            if (map->pathname[0] != '\0') {
-                fprintf(file, " %s", map->pathname);
+            //DEBUG_PRINTF("map->permissions = %s\n", map->permissions);
+            safe_strncpy(safe_permissions, map->permissions, sizeof(safe_permissions));
+            safe_strncpy(safe_dev, map->dev, sizeof(safe_dev));
+            safe_strncpy(safe_pathname, map->pathname, sizeof(safe_pathname));
+            
+            fprintf(file, "%lx-%lx %s %lx %s %lu",
+                   map->start_addr, map->end_addr, safe_permissions,
+                   map->offset, safe_dev, map->inode);
+            
+            if (safe_pathname[0] != '\0') {
+                fprintf(file, " %s", safe_pathname);
             }
             fprintf(file, "\n");
         }
@@ -96,12 +115,20 @@ int save_incremental_backup(const struct Maps_diff* diff, pid_t pid) {
     if (diff->added.size > 0) {
         fprintf(file, "[ADDED]\n");
         for (size_t i = 0; i < diff->added.size; i++) {
-            struct Memory_map* map = (struct Memory_map*)Dynamic_array_get(&diff->added, i);
+            struct Memory_map* map = safe_get_mapping(&diff->added, i);
             if (map) {
+                char safe_permissions[5] = {0};
+                char safe_dev[12] = {0};
+                char safe_pathname[MAX_PATH_LEN] = {0};
+                
+                safe_strncpy(safe_permissions, map->permissions, sizeof(safe_permissions));
+                safe_strncpy(safe_dev, map->dev, sizeof(safe_dev));
+                safe_strncpy(safe_pathname, map->pathname, sizeof(safe_pathname));
+                
                 fprintf(file, "%lx-%lx %s %lx %s %lu",
-                       map->start_addr, map->end_addr, map->permissions,
-                       map->offset, map->dev, map->inode);
-                if (map->pathname[0] != '\0') fprintf(file, " %s", map->pathname);
+                       map->start_addr, map->end_addr, safe_permissions,
+                       map->offset, safe_dev, map->inode);
+                if (safe_pathname[0] != '\0') fprintf(file, " %s", safe_pathname);
                 fprintf(file, "\n");
             }
         }
@@ -111,12 +138,20 @@ int save_incremental_backup(const struct Maps_diff* diff, pid_t pid) {
     if (diff->removed.size > 0) {
         fprintf(file, "[REMOVED]\n");
         for (size_t i = 0; i < diff->removed.size; i++) {
-            struct Memory_map* map = (struct Memory_map*)Dynamic_array_get(&diff->removed, i);
+            struct Memory_map* map = safe_get_mapping(&diff->removed, i);
             if (map) {
+                char safe_permissions[5] = {0};
+                char safe_dev[12] = {0};
+                char safe_pathname[MAX_PATH_LEN] = {0};
+                
+                safe_strncpy(safe_permissions, map->permissions, sizeof(safe_permissions));
+                safe_strncpy(safe_dev, map->dev, sizeof(safe_dev));
+                safe_strncpy(safe_pathname, map->pathname, sizeof(safe_pathname));
+                
                 fprintf(file, "%lx-%lx %s %lx %s %lu",
-                       map->start_addr, map->end_addr, map->permissions,
-                       map->offset, map->dev, map->inode);
-                if (map->pathname[0] != '\0') fprintf(file, " %s", map->pathname);
+                       map->start_addr, map->end_addr, safe_permissions,
+                       map->offset, safe_dev, map->inode);
+                if (safe_pathname[0] != '\0') fprintf(file, " %s", safe_pathname);
                 fprintf(file, "\n");
             }
         }
@@ -126,12 +161,20 @@ int save_incremental_backup(const struct Maps_diff* diff, pid_t pid) {
     if (diff->modified.size > 0) {
         fprintf(file, "[MODIFIED]\n");
         for (size_t i = 0; i < diff->modified.size; i++) {
-            struct Memory_map* map = (struct Memory_map*)Dynamic_array_get(&diff->modified, i);
+            struct Memory_map* map = safe_get_mapping(&diff->modified, i);
             if (map) {
+                char safe_permissions[5] = {0};
+                char safe_dev[12] = {0};
+                char safe_pathname[MAX_PATH_LEN] = {0};
+                
+                safe_strncpy(safe_permissions, map->permissions, sizeof(safe_permissions));
+                safe_strncpy(safe_dev, map->dev, sizeof(safe_dev));
+                safe_strncpy(safe_pathname, map->pathname, sizeof(safe_pathname));
+                
                 fprintf(file, "%lx-%lx %s %lx %s %lu",
-                       map->start_addr, map->end_addr, map->permissions,
-                       map->offset, map->dev, map->inode);
-                if (map->pathname[0] != '\0') fprintf(file, " %s", map->pathname);
+                       map->start_addr, map->end_addr, safe_permissions,
+                       map->offset, safe_dev, map->inode);
+                if (safe_pathname[0] != '\0') fprintf(file, " %s", safe_pathname);
                 fprintf(file, "\n");
             }
         }

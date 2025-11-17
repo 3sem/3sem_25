@@ -28,39 +28,62 @@ void Dynamic_array_dtor(Dynamic_array *array) {
     }
 }
 
-bool _Dynamic_array_resize_if_needed(Dynamic_array *array, int size) {
-
-    if (array->size + size >= array->capacity) {
-
-        size_t new_capacity = array->capacity * Expansion_coeff;
-        char* tmp_ptr = (char*) realloc(array->data, new_capacity * sizeof(char));
-        if(!tmp_ptr) {
-
-            new_capacity = array->capacity * 3 / 2;     // another try to reallocate, UB was here, but this thing also didn't help
-            tmp_ptr = (char*) realloc(array->data, new_capacity * sizeof(char));
-            if(!tmp_ptr) {
-
+bool _Dynamic_array_resize_if_needed(Dynamic_array *array, size_t size) {
+    if (array->size > SIZE_MAX - size) {
+        fprintf(stderr, "ERROR: Size would overflow\n");
+        return false;
+    }
+    
+    size_t new_total_size = array->size + size;
+    
+    if (new_total_size > array->capacity) {
+        size_t new_capacity = array->capacity;
+        if (new_capacity > SIZE_MAX / Expansion_coeff) {
+            new_capacity = new_total_size;
+        } else {
+            new_capacity = array->capacity * Expansion_coeff;
+            if (new_capacity < new_total_size) {
+                new_capacity = new_total_size;
+            }
+        }
+        
+        if (new_capacity < new_total_size) {
+            fprintf(stderr, "ERROR: New capacity insufficient\n");
+            return false;
+        }
+        
+        char* tmp_ptr = (char*) realloc(array->data, new_capacity);
+        if (!tmp_ptr) {
+            new_capacity = new_total_size;
+            tmp_ptr = (char*) realloc(array->data, new_capacity);
+            if (!tmp_ptr) {
                 fprintf(stderr, "ERROR in func '_Dynamic_array_resize_if_needed': memory was not allocated\n");
-                free(array->data);
-                abort();
                 return false;
             }
         }
 
         array->capacity = new_capacity;
         array->data = tmp_ptr;
-        memset(array->data + array->size, array->fill_byte, array->capacity - array->size);
+        
+        if (new_capacity > array->size) {
+            memset(array->data + array->size, array->fill_byte, new_capacity - array->size);
+        }
     }
 
     return true;
 }
 
 
-void Dynamic_array_push_back(Dynamic_array *array, const void* element, int size) {
+bool Dynamic_array_push_back(Dynamic_array *array, const void* element, int size) {
 
-    _Dynamic_array_resize_if_needed(array, size);
+    if (!_Dynamic_array_resize_if_needed(array, size)) {
+        return false;
+    }
+
     memcpy(array->data + array->size, element, size);
     array->size += size;
+
+    return true;
 }
 
 bool Dynamic_array_pop_back(Dynamic_array *array, int size) {
