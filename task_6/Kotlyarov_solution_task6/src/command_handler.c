@@ -113,10 +113,12 @@ void handle_help_command(OutputMode output_mode) {
         printf("  pid <new_pid>   - change target PID\n");
         printf("  backup          - create manual backup\n");
         printf("  reload          - reload configuration\n");
+        printf("  show_diff [k]   - show last diff or k-th diff from end\n");
+        printf("  show_history    - show diff history\n");
         printf("  help            - this reference\n");
         printf("  quit            - exit\n");
     } else {
-        log_message("HELP: Available commands: status, interval, pid, backup, reload, help, quit");
+        log_message("HELP: Available commands: status, interval, pid, backup, reload, show_diff, show_history, help, quit");
     }
 }
 
@@ -146,6 +148,16 @@ void handle_command(const char* cmd, struct Daemon_cfg* config, OutputMode outpu
     else if (strcmp(clean_cmd, "reload") == 0) {
         handle_reload_command(config, output_mode);
     }
+    else if (strncmp(clean_cmd, "show_diff", 9) == 0) {
+        if (strlen(clean_cmd) > 9) {
+            handle_show_diff_command(clean_cmd + 10, config, output_mode);
+        } else {
+            handle_show_diff_command("", config, output_mode);
+        }
+    }
+    else if (strcmp(clean_cmd, "show_history") == 0) {
+        handle_show_history_command(config, output_mode);
+    }
     else if (strcmp(clean_cmd, "help") == 0) {
         handle_help_command(output_mode);
     }
@@ -157,5 +169,59 @@ void handle_command(const char* cmd, struct Daemon_cfg* config, OutputMode outpu
     if (output_mode == OUTPUT_CONSOLE) {
         printf(">>> ");
         fflush(stdout);
+    }
+}
+
+
+void handle_show_diff_command(const char* args, struct Daemon_cfg* config, OutputMode output_mode) {
+    if (!config) return;
+
+    int diff_index = 1;
+
+    if (args && strlen(args) > 0) {
+        diff_index = atoi(args);
+        if (diff_index < 1) {
+            diff_index = 1;
+        }
+    }
+
+    if (config->diff_history_count == 0) {
+        print_to_output("No diffs available in history", output_mode);
+        return;
+    }
+
+    if (diff_index > config->diff_history_count) {
+        if (output_mode == OUTPUT_CONSOLE) {
+            printf("Only %d diffs available in history. Showing last diff.\n",
+                   config->diff_history_count);
+        }
+        diff_index = config->diff_history_count;
+    }
+
+    struct Stored_diff* stored_diff = get_diff_from_history(config, diff_index);
+    if (!stored_diff) {
+        print_to_output("Error: Failed to get diff from history", output_mode);
+        return;
+    }
+
+    if (output_mode == OUTPUT_CONSOLE) {
+        print_diff_details(stored_diff);
+    } else {
+        size_t added_count = stored_diff->diff.added.size / sizeof(struct Memory_map);
+        size_t removed_count = stored_diff->diff.removed.size / sizeof(struct Memory_map);
+        size_t modified_count = stored_diff->diff.modified.size / sizeof(struct Memory_map);
+
+        log_message("DIFF[%d]: %s - Added: %zu, Removed: %zu, Modified: %zu",
+                   diff_index, stored_diff->timestamp_str,
+                   added_count, removed_count, modified_count);
+    }
+}
+
+void handle_show_history_command(struct Daemon_cfg* config, OutputMode output_mode) {
+    if (output_mode == OUTPUT_CONSOLE) {
+        print_diff_history(config);
+    } else {
+        log_message("Diff history requested - %d entries available",
+                   config->diff_history_count);
     }
 }

@@ -185,32 +185,3 @@ int save_incremental_backup(const struct Maps_diff* diff, pid_t pid) {
                diff->added.size, diff->removed.size, diff->modified.size);
     return BACKUP_SUCCESS;
 }
-
-void log_message(const char* format, ...) {
-    char logfile[256];
-    snprintf(logfile, sizeof(logfile), "%s/monitor.log", LOGS_DIR);
-    
-    FILE* file = fopen(logfile, "a");
-    if (!file) return;
-    
-    time_t now = time(NULL);
-    struct tm* tm_info = localtime(&now);
-    
-    fprintf(file, "[%04d-%02d-%02d %02d:%02d:%02d] ",
-           tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday,
-           tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
-    
-    va_list args;
-    va_start(args, format);
-    vfprintf(file, format, args);
-    va_end(args);
-    
-    fprintf(file, "\n");
-    fclose(file);
-    
-    printf("[LOG] ");
-    va_start(args, format);
-    vprintf(format, args);
-    va_end(args);
-    printf("\n");
-}

@@ -6,9 +6,9 @@ bool init_maps_diff(struct Maps_diff* diff) {
         return false;
     }
     
-    if (!Dynamic_array_ctor(&diff->added, Init_diff_size, sizeof(struct Memory_map)) ||
-        !Dynamic_array_ctor(&diff->removed, Init_diff_size, sizeof(struct Memory_map)) ||
-        !Dynamic_array_ctor(&diff->modified, Init_diff_size, sizeof(struct Memory_map))) {
+    if (!Dynamic_array_ctor(&diff->added, Init_diff_size * sizeof(struct Memory_map), 0) ||
+        !Dynamic_array_ctor(&diff->removed, Init_diff_size * sizeof(struct Memory_map), 0) ||
+        !Dynamic_array_ctor(&diff->modified, Init_diff_size * sizeof(struct Memory_map), 0)) {
         return false;
     }
 
@@ -206,4 +206,220 @@ int compare_snapshots(const struct Maps_snapshot* old, const struct Maps_snapsho
     free(old_matched);
     free(new_matched);
     return DIFF_SUCCESS;
+}
+
+void store_diff_history(struct Daemon_cfg* config, const struct Maps_diff* diff) {
+    if (!config || !diff) return;
+
+    size_t added_count = diff->added.size / sizeof(struct Memory_map);
+    size_t removed_count = diff->removed.size / sizeof(struct Memory_map);
+    size_t modified_count = diff->modified.size / sizeof(struct Memory_map);
+    
+    if (added_count == 0 && removed_count == 0 && modified_count == 0) {
+        log_message("Skipping empty diff (no changes)");
+        return;
+    }
+    
+    log_message("Storing diff to history: +%zu, -%zu, ~%zu", 
+                added_count, removed_count, modified_count);
+
+    int index = (config->diff_history_start + config->diff_history_count) % MAX_DIFF_HISTORY;
+
+    if (config->diff_history_count == MAX_DIFF_HISTORY) {
+        free_stored_diff(&config->diff_history[index]);
+    }
+
+    if (!copy_maps_diff(diff, &config->diff_history[index].diff)) {
+        log_message("ERROR: Failed to copy diff for history");
+        return;
+    }
+
+    config->diff_history[index].timestamp = time(NULL);
+    struct tm* tm_info = localtime(&config->diff_history[index].timestamp);
+    strftime(config->diff_history[index].timestamp_str,
+             sizeof(config->diff_history[index].timestamp_str),
+             "%Y-%m-%d %H:%M:%S", tm_info);
+
+    if (config->diff_history_count < MAX_DIFF_HISTORY) {
+        config->diff_history_count++;
+    } else {
+        config->diff_history_start = (config->diff_history_start + 1) % MAX_DIFF_HISTORY;
+    }
+    
+    log_message("History count: %d, start: %d", 
+                config->diff_history_count, config->diff_history_start);
+}
+
+struct Stored_diff* get_diff_from_history(struct Daemon_cfg* config, int index) {
+    if (!config || index < 1 || index > config->diff_history_count) {
+        log_message("ERROR: Invalid diff index %d (count: %d)", index, config->diff_history_count);
+        return NULL;
+    }
+
+    int actual_index = (config->diff_history_start + config->diff_history_count - index) % MAX_DIFF_HISTORY;
+    
+    struct Stored_diff* stored_diff = &config->diff_history[actual_index];
+    size_t added_count = stored_diff->diff.added.size / sizeof(struct Memory_map);
+    size_t removed_count = stored_diff->diff.removed.size / sizeof(struct Memory_map);
+    size_t modified_count = stored_diff->diff.modified.size / sizeof(struct Memory_map);
+    
+    log_message("Retrieving diff %d (actual index %d): +%zu, -%zu, ~%zu", 
+                index, actual_index, added_count, removed_count, modified_count);
+    
+    return stored_diff;
+}
+
+void print_memory_map(const struct Memory_map* map, int index) {
+    if (!map) return;
+
+    printf("  [%d] 0x%lx-0x%lx %s %lx %s %lu",
+           index,
+           map->start_addr,
+           map->end_addr,
+           map->permissions,
+           map->offset,
+           map->dev,
+           map->inode);
+
+    if (map->pathname[0] != '\0') {
+        printf(" %s", map->pathname);
+    }
+    printf("\n");
+}
+
+void print_diff_details(const struct Stored_diff* stored_diff) {
+    if (!stored_diff) return;
+
+    printf("\n=== Diff at %s ===\n", stored_diff->timestamp_str);
+
+    size_t added_count = stored_diff->diff.added.size / sizeof(struct Memory_map);
+    if (added_count > 0) {
+        printf("Added mappings (%zu):\n", added_count);
+        for (size_t i = 0; i < added_count; i++) {
+            struct Memory_map* map = safe_get_mapping(&stored_diff->diff.added, i);
+            print_memory_map(map, i + 1);
+        }
+    }
+
+    size_t removed_count = stored_diff->diff.removed.size / sizeof(struct Memory_map);
+    if (removed_count > 0) {
+        printf("Removed mappings (%zu):\n", removed_count);
+        for (size_t i = 0; i < removed_count; i++) {
+            struct Memory_map* map = safe_get_mapping(&stored_diff->diff.removed, i);
+            print_memory_map(map, i + 1);
+        }
+    }
+
+    size_t modified_count = stored_diff->diff.modified.size / sizeof(struct Memory_map);
+    if (modified_count > 0) {
+        printf("Modified mappings (%zu):\n", modified_count);
+        for (size_t i = 0; i < modified_count; i++) {
+            struct Memory_map* map = safe_get_mapping(&stored_diff->diff.modified, i);
+            print_memory_map(map, i + 1);
+        }
+    }
+
+    if (added_count == 0 && removed_count == 0 && modified_count == 0) {
+        printf("No changes detected\n");
+    }
+}
+
+void print_diff_history(struct Daemon_cfg* config) {
+    if (!config || config->diff_history_count == 0) {
+        printf("No diff history available (only diffs with real changes are stored)\n");
+        return;
+    }
+
+    printf("Diff history (latest %d non-empty diffs of max %d):\n",
+           config->diff_history_count, MAX_DIFF_HISTORY);
+
+    for (int i = 0; i < config->diff_history_count; i++) {
+        int index = (config->diff_history_start + i) % MAX_DIFF_HISTORY;
+        struct Stored_diff* stored_diff = &config->diff_history[index];
+
+        size_t added_count = stored_diff->diff.added.size / sizeof(struct Memory_map);
+        size_t removed_count = stored_diff->diff.removed.size / sizeof(struct Memory_map);
+        size_t modified_count = stored_diff->diff.modified.size / sizeof(struct Memory_map);
+
+        printf("  [%d] %s (+%zu, -%zu, ~%zu)\n",
+               i + 1,
+               stored_diff->timestamp_str,
+               added_count, removed_count, modified_count);
+    }
+}
+
+int copy_maps_diff(const struct Maps_diff* src, struct Maps_diff* dst) {
+    if (!src || !dst) return 0;
+
+    size_t map_size = sizeof(struct Memory_map);
+    size_t needed_capacity = (src->added.size + src->removed.size + src->modified.size) / map_size;
+    
+    if (!Dynamic_array_ctor(&dst->added, (needed_capacity + 10) * map_size, 0) ||
+        !Dynamic_array_ctor(&dst->removed, (needed_capacity + 10) * map_size, 0) ||
+        !Dynamic_array_ctor(&dst->modified, (needed_capacity + 10) * map_size, 0)) {
+        return 0;
+    }
+
+    if (src->added.size > 0) {
+        memcpy(dst->added.data, src->added.data, src->added.size);
+        dst->added.size = src->added.size;
+    }
+
+    if (src->removed.size > 0) {
+        memcpy(dst->removed.data, src->removed.data, src->removed.size);
+        dst->removed.size = src->removed.size;
+    }
+
+    if (src->modified.size > 0) {
+        memcpy(dst->modified.data, src->modified.data, src->modified.size);
+        dst->modified.size = src->modified.size;
+    }
+
+    return 1;
+}
+
+void free_stored_diff(struct Stored_diff* stored_diff) {
+    if (!stored_diff) return;
+    free_maps_diff(&stored_diff->diff);
+}
+
+void free_diff_history(struct Daemon_cfg* config) {
+    if (!config) return;
+
+    for (int i = 0; i < config->diff_history_count; i++) {
+        int index = (config->diff_history_start + i) % MAX_DIFF_HISTORY;
+        free_stored_diff(&config->diff_history[index]);
+    }
+
+    config->diff_history_count = 0;
+    config->diff_history_start = 0;
+}
+
+void log_message(const char* format, ...) {
+    char logfile[256];
+    snprintf(logfile, sizeof(logfile), "%s/monitor.log", LOGS_DIR);
+    
+    FILE* file = fopen(logfile, "a");
+    if (!file) return;
+    
+    time_t now = time(NULL);
+    struct tm* tm_info = localtime(&now);
+    
+    fprintf(file, "[%04d-%02d-%02d %02d:%02d:%02d] ",
+           tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday,
+           tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
+    
+    va_list args;
+    va_start(args, format);
+    vfprintf(file, format, args);
+    va_end(args);
+    
+    fprintf(file, "\n");
+    fclose(file);
+    
+    printf("[LOG] ");
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+    printf("\n");
 }

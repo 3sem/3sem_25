@@ -113,8 +113,15 @@ int process_snapshot(struct Daemon_cfg* config) {
     int diff_result = compare_snapshots(config->last_snapshot, current, &diff);
     
     if (diff_result == DIFF_SUCCESS) {
-        if (diff.added.size > 0 || diff.removed.size > 0 || diff.modified.size > 0) {
+        size_t added_count = diff.added.size / sizeof(struct Memory_map);
+        size_t removed_count = diff.removed.size / sizeof(struct Memory_map);
+        size_t modified_count = diff.modified.size / sizeof(struct Memory_map);
+        
+        if (added_count > 0 || removed_count > 0 || modified_count > 0) {
+            store_diff_history(config, &diff);
             save_incremental_backup(&diff, config->target_pid);
+        } else {
+            log_message("No changes detected, skipping history and backup");
         }
     }
     
@@ -193,6 +200,8 @@ int interactive_mode(struct Daemon_cfg* config) {
     char cmd_buffer[256] = {0};
     int cmd_pos = 0;
     
+    config->diff_history_count = 0;
+    config->diff_history_start = 0;    
     config->last_snapshot = read_maps_snapshot(config->target_pid);
     if (!config->last_snapshot) {
         printf("ERROR: Failed to read initial snapshot\n");
@@ -260,6 +269,8 @@ int daemon_mode(struct Daemon_cfg* config) {
         return -1;
     }
     
+    config->diff_history_count = 0;
+    config->diff_history_start = 0;    
     global_daemon_cfg = config;
     setup_signal_handlers();
     

@@ -13,6 +13,7 @@
 #include "Debug_printf.h"
 #include "Dynamic_array_funcs.h"
 
+#define MAX_DIFF_HISTORY 100
 #define PATH_MAX 256
 
 enum Mode {
@@ -26,6 +27,18 @@ enum Parse_status {
     
     PARSE_SUCCESS = 0x5AFE,
     PARSE_FAILED = 0xDEAD
+};
+
+struct Maps_diff {
+    Dynamic_array added;
+    Dynamic_array removed;
+    Dynamic_array modified;
+};
+
+struct Stored_diff {
+    struct Maps_diff diff;
+    time_t timestamp;
+    char timestamp_str[64];
 };
 
 struct Memory_map {
@@ -50,5 +63,10 @@ struct Daemon_cfg {
     int mode;
     char backup_dir[PATH_MAX];
     struct Maps_snapshot* last_snapshot;
+
+    struct Stored_diff diff_history[MAX_DIFF_HISTORY];
+    int diff_history_count;
+    int diff_history_start;
 };
+
 #endif

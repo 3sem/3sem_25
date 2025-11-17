@@ -21,6 +21,8 @@ void handle_backup_command(struct Daemon_cfg* config, OutputMode output_mode);
 void handle_stop_command(struct Daemon_cfg* config, OutputMode output_mode);
 void handle_help_command(OutputMode output_mode);
 void handle_reload_command(struct Daemon_cfg* config, OutputMode output_mode);
+void handle_show_history_command(struct Daemon_cfg* config, OutputMode output_mode);
+void handle_show_diff_command(const char* args, struct Daemon_cfg* config, OutputMode output_mode);
 
 void print_to_output(const char* message, OutputMode output_mode);
 void update_target_pid(struct Daemon_cfg* config, pid_t new_pid);

@@ -42,6 +42,8 @@ int main(int argc, char* argv[]) {
         cfg.last_snapshot = NULL;
     }
     
+    free_diff_history(&cfg);
+
     log_message("Memory monitor exiting");
     return result;
 }
