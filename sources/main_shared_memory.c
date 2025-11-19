@@ -2,7 +2,7 @@
 #include <sys/time.h>
 #include <stdint.h>
 
-#include "shared_mem_send.h"
+#include "shared_memory_send.h"
 
 int main(int argc, char **argv) {
     if (argc != 3) {
@@ -30,6 +30,13 @@ int main(int argc, char **argv) {
     // printf("shared_memory closed and destroyed\n");
 
     timersub(&time_end, &time_start, &prog_time);
-    printf("\x1b[32m" "Time use to sent file %s using shared memory: %ld s %ld us\n\n" "\x1b[0m",
-           src_file, (uint64_t)prog_time.tv_sec, (uint64_t)prog_time.tv_usec);
+    printf(
+        "\x1b[32m""Time used to send file "
+        "\x1b[34m""%s"
+        "\x1b[32m"" with "
+        "\x1b[35m""shared memory"
+        "\x1b[32m"": %ld s %ld us\n\n"
+        "\x1b[0m",
+        src_file, (uint64_t)prog_time.tv_sec, (uint64_t)prog_time.tv_usec
+    );
 }

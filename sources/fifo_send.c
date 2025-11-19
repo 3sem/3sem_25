@@ -147,21 +147,20 @@ int recieve_fifo(Fifo *fifo, int fd, int size) {
     SET_BLOCK(fd_out);
     SET_BLOCK(fd_in);
 
-    printf("\x1b[34m""recieve started\n""\x1b[0m");
+    // printf("\x1b[32m""recieve started\n""\x1b[0m");
     while (size > 0) {
         if ((fifo->size = read(fd_in, fifo->buffer, FIFO_BUFFER_SIZE)) == -1) {
-            printf("\x1b[34m""ERROR IN read recieve; errno = %d\n""\x1b[0m", errno);
+            printf("\x1b[33m""ERROR in read recieve; errno = %d\n""\x1b[0m", errno);
             return -1;
         }
         size -= fifo->size;
-        printf("\x1b[34m""sended = %d\n""\x1b[0m", fifo->size);
         if (write(fd_out, fifo->buffer, fifo->size) == -1) {
-            printf("\x1b[34m""ERROR IN write recieve; errno = %d\n""\x1b[0m", errno);
+            printf("\x1b[33m""ERROR in write recieve; errno = %d\n""\x1b[0m", errno);
             return -1;
         }
         fifo->size = 0;
     }
-    printf("\033[4m""\x1b[34m""recieve ended\n""\x1b[0m""\033[0m");
+    // printf("\033[4m""\x1b[32m""recieve ended\n""\x1b[0m""\033[0m");
 
     return 0;
 }
@@ -176,21 +175,20 @@ int send_fifo(Fifo *fifo, int fd, int size) {
     SET_BLOCK(fd_out);
     SET_BLOCK(fd_in);
 
-    printf("\x1b[32m""send started\n""\x1b[0m");
+    // printf("\x1b[32m""send started\n""\x1b[0m");
     while (size > 0) {
         if ((fifo->size = read(fd_in, fifo->buffer, FIFO_BUFFER_SIZE)) == -1) {
-            printf("\x1b[32m""ERROR IN read send; errno = %d\n""\x1b[0m", errno);
+            printf("\x1b[33m""ERROR IN read send; errno = %d\n""\x1b[0m", errno);
             return -1;
         }
         size -= fifo->size;
-        printf("\x1b[32m""sended = %d\n""\x1b[0m", fifo->size);
         if (write(fd_out, fifo->buffer, fifo->size) == -1) {
-            printf("\x1b[32m""ERROR IN write send; errno = %d\n""\x1b[0m", errno);
+            printf("\x1b[33m""ERROR IN write send; errno = %d\n""\x1b[0m", errno);
             return -1;
         }
         fifo->size = 0;
     };
-    printf("\033[4m""\x1b[32m""send ended\n""\x1b[32m""\033[0m");
+    // printf("\033[4m""\x1b[32m""send ended\n""\x1b[32m""\033[0m");
 
     return 0;
 }

@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "shared_mem_send.h"
+#include "shared_memory_send.h"
 #include "common.h"
 
 int call_shm_open   (Shmem *mem);
