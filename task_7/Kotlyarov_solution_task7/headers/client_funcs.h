@@ -2,6 +2,7 @@
 #define CLIENT_FUNCS
 
 #include <signal.h>
+#include <sys/select.h>
 #include "fifo_utils.h"
 #include "client_server_cfg.h"
 #include "Debug_printf.h"

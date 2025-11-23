@@ -12,7 +12,7 @@ int register_client(client_t* client_info, int cl_s_fifo_fd) {
     char reg_cmd[512]; 
     char response[16];
     
-    int written = snprintf(reg_cmd, sizeof(reg_cmd), "REGISTER %s %s", 
+    int written = snprintf(reg_cmd, sizeof(reg_cmd), "REGISTER %s %s\n", 
                           client_info->tx_path, client_info->rx_path);
     
     if (written < 0 || (size_t)written >= sizeof(reg_cmd)) {
@@ -129,68 +129,63 @@ int client_recieve_and_print(int tx_fd) {
         return -1;
     }
 
-    char size_buf[64];
-    size_t size_bytes_read = 0;
-    char c;
+    char buffer[4096];
+    ssize_t total_bytes_read = 0;
+    ssize_t bytes_read;
     
-    while (size_bytes_read < sizeof(size_buf) - 1) {
-        if (read(tx_fd, &c, 1) != 1) {
-            perror("read size info");
-            return -1;
-        }
-        if (c == '\n') {
-            break;
-        }
-        size_buf[size_bytes_read++] = c;
-    }
-    size_buf[size_bytes_read] = '\0';
-
-    long file_size = 0;
-    if (sscanf(size_buf, "SIZE:%ld", &file_size) != 1) {
-        DEBUG_PRINTF("ERROR: invalid size format: %s\n", size_buf);
+    DEBUG_PRINTF("Starting to read from server (fd: %d)...\n", tx_fd);
+    
+    // ✅ Установим таймаут для чтения
+    struct timeval timeout;
+    fd_set read_fds;
+    
+    FD_ZERO(&read_fds);
+    FD_SET(tx_fd, &read_fds);
+    timeout.tv_sec = 5;  // 5 секунд таймаут
+    timeout.tv_usec = 0;
+    
+    int ret = select(tx_fd + 1, &read_fds, NULL, NULL, &timeout);
+    
+    if (ret == -1) {
+        perror("select");
+        return -1;
+    } else if (ret == 0) {
+        DEBUG_PRINTF("❌ Timeout waiting for file data\n");
         return -1;
     }
-
-    DEBUG_PRINTF("Expecting file of size: %ld\n", file_size);
-
-    char buffer[BUFFER_SIZE];
-    ssize_t total_bytes_read = 0;
     
-    while (total_bytes_read < file_size) {
-        ssize_t bytes_to_read = sizeof(buffer);
-        if (file_size - total_bytes_read < bytes_to_read) {
-            bytes_to_read = file_size - total_bytes_read;
-        }
-
-        ssize_t bytes_read = read(tx_fd, buffer, bytes_to_read);
-        
-        if (bytes_read == -1) {
-            perror("read from FIFO");
-            return -1;
-        }
-        
-        if (bytes_read == 0) {
-            DEBUG_PRINTF("ERROR: premature EOF, expected %ld, got %zd\n", 
-                        file_size, total_bytes_read);
-            return -1;
-        }
-        
+    // ✅ Читаем все доступные данные
+    while ((bytes_read = read(tx_fd, buffer, sizeof(buffer))) > 0) {
         total_bytes_read += bytes_read;
+        DEBUG_PRINTF("📥 Received chunk: %zd bytes (total: %zd)\n", bytes_read, total_bytes_read);
         
+        // Выводим в stdout
         ssize_t bytes_written = 0;
         while (bytes_written < bytes_read) {
             ssize_t result = write(STDOUT_FILENO, buffer + bytes_written, bytes_read - bytes_written);
             
             if (result == -1) {
-                perror("write to stdout");
+                if (errno == EINTR) continue;
+                DEBUG_PRINTF("❌ Write to stdout error: ");
+                perror("");
                 return -1;
             }
             
             bytes_written += result;
         }
+        
+        fflush(stdout);
     }
     
-    DEBUG_PRINTF("File received successfully: %zd bytes\n", total_bytes_read);
+    if (bytes_read == -1) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            DEBUG_PRINTF("❌ Read error from server: ");
+            perror("");
+            return -1;
+        }
+    }
+    
+    DEBUG_PRINTF("✅ File received successfully: %zd bytes\n", total_bytes_read);
     return 0;
 }
 
@@ -201,7 +196,7 @@ int send_get_command(client_t* client_info, const char* filename) {
     }
 
     char command[512];
-    snprintf(command, sizeof(command), "GET %s", filename);
+    snprintf(command, sizeof(command), "GET %s\n", filename);
 
     DEBUG_PRINTF("Sending command: %s\n", command);
 

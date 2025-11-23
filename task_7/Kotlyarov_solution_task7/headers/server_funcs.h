@@ -9,8 +9,14 @@
 extern int server_should_exit;
 
 typedef struct {
+    char buffer[4096];
+    size_t pos;
+} fifo_buffer_t;
+
+typedef struct {
     client_t clients[MAX_EVENTS];
     int amount;
+    fifo_buffer_t cmd_buffer;
 } clients_t;
 
 void run_server_loop(tx_threads_pool_t* thread_pool, int epoll_fd, int cmd_fifo_fd);

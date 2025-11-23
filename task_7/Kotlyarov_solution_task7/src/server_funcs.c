@@ -52,27 +52,22 @@ void cleanup_server_resources(int cmd_fifo_fd, int epoll_fd, tx_threads_pool_t* 
 
 void run_server_loop(tx_threads_pool_t* pool, int epoll_fd, int cmd_fifo_fd) {
     struct epoll_event events[MAX_EVENTS];
+    clients_t clients = { 
+        .amount = 0,
+        .cmd_buffer = { .pos = 0 }
+    };
     
     DEBUG_PRINTF("Server loop started\n");
     
     while (!server_should_exit) {
-        int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, 1000); // 1 second timeout
+        int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, 1000);
         
         if (nfds == -1) {
             if (errno == EINTR) {
-                if (server_should_exit) {
-                    break;
-                }
+                if (server_should_exit) break;
                 continue;
             }
             perror("epoll_wait");
-            continue;
-        }
-        
-        if (nfds == 0) {
-            if (server_should_exit) {
-                break;
-            }
             continue;
         }
         
@@ -91,6 +86,171 @@ void run_server_loop(tx_threads_pool_t* pool, int epoll_fd, int cmd_fifo_fd) {
     }
     
     DEBUG_PRINTF("Server loop exiting...\n");
+}
+
+int handle_registration_command(int cmd_fifo_fd, clients_t* clients, int epoll_fd) {
+    if (!clients) {
+        DEBUG_PRINTF("ERROR: registration failed: null ptr\n");
+        return -1;
+    }
+
+    char read_buffer[1024];
+    char tx_path[256];
+    char rx_path[256];
+    
+    DEBUG_PRINTF("Reading registration commands...\n");
+    
+    ssize_t n = read(cmd_fifo_fd, read_buffer, sizeof(read_buffer) - 1);
+    if (n <= 0) {
+        if (n == 0) {
+            DEBUG_PRINTF("EOF on command FIFO\n");
+        } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            perror("read from command FIFO");
+        }
+        return -1;
+    }
+
+    read_buffer[n] = '\0';
+    
+    fifo_buffer_t* buf = &clients->cmd_buffer;
+    size_t available = sizeof(buf->buffer) - buf->pos - 1;
+    
+    if ((size_t)n > available) {
+        DEBUG_PRINTF("WARNING: Command buffer overflow, resetting\n");
+        buf->pos = 0;
+        available = sizeof(buf->buffer) - 1;
+    }
+    
+    size_t to_copy = (size_t)n < available ? (size_t)n : available;
+    memcpy(buf->buffer + buf->pos, read_buffer, to_copy);
+    buf->pos += to_copy;
+    buf->buffer[buf->pos] = '\0';
+    
+    DEBUG_PRINTF("Command buffer: [%s] (%zu bytes)\n", buf->buffer, buf->pos);
+    
+    char* line_start = buf->buffer;
+    int commands_processed = 0;
+    
+    while (line_start < buf->buffer + buf->pos) {
+        char* line_end = strchr(line_start, '\n');
+        if (!line_end) {
+            break;
+        }
+        
+        *line_end = '\0';
+        
+        if (sscanf(line_start, "REGISTER %255s %255s", tx_path, rx_path) == 2) {
+            DEBUG_PRINTF("Parsed command: TX=%s, RX=%s\n", tx_path, rx_path);
+            
+            client_t* new_client = create_client(clients, tx_path, rx_path);
+            if (new_client) {
+                DEBUG_PRINTF("Client %d created\n", new_client->client_id);
+                
+                struct epoll_event event;
+                event.events = EPOLLIN;
+                event.data.fd = new_client->rx_fd;
+                event.data.u32 = new_client->client_id;
+                
+                if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, new_client->rx_fd, &event) == -1) {
+                    perror("epoll_ctl");
+                    close_client_connection(clients, new_client->client_id);
+                    line_start = line_end + 1;
+                    continue;
+                }
+                
+                if (send_ack_to_client(new_client->tx_fd) != 0) {
+                    DEBUG_PRINTF("ERROR: Failed to send ACK\n");
+                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, new_client->rx_fd, NULL);
+                    close_client_connection(clients, new_client->client_id);
+                    line_start = line_end + 1;
+                    continue;
+                }
+                
+                clients->amount++;
+                DEBUG_PRINTF("Client %d registered. Total: %d\n", 
+                           new_client->client_id, clients->amount);
+                commands_processed++;
+            } else {
+                DEBUG_PRINTF("ERROR: Failed to create client\n");
+            }
+        } else {
+            DEBUG_PRINTF("ERROR: Invalid registration command: %s\n", line_start);
+        }
+        
+        line_start = line_end + 1;
+    }
+    
+    size_t remaining = buf->buffer + buf->pos - line_start;
+    if (remaining > 0) {
+        memmove(buf->buffer, line_start, remaining);
+        buf->pos = remaining;
+        buf->buffer[buf->pos] = '\0';
+        DEBUG_PRINTF("Remaining in buffer: [%s] (%zu bytes)\n", buf->buffer, buf->pos);
+    } else {
+        buf->pos = 0;
+    }
+    
+    DEBUG_PRINTF("Processed %d registration commands\n", commands_processed);
+    return commands_processed > 0 ? 0 : -1;
+}
+
+int handle_get_command(tx_threads_pool_t* thread_pool, int client_id, clients_t* clients) {
+    if (!clients || client_id < 0 || client_id >= clients->amount || 
+        !clients->clients[client_id].registered) {
+        DEBUG_PRINTF("ERROR: invalid client id %d (total: %d)\n", client_id, clients->amount);
+        return -1;
+    }
+    
+    client_t* client = &clients->clients[client_id];
+    char buffer[1024];
+    char file_path[256];
+    
+    DEBUG_PRINTF("Reading from client %d (fd: %d)...\n", client_id, client->rx_fd);
+    ssize_t n = read(client->rx_fd, buffer, sizeof(buffer) - 1);
+    
+    if (n > 0) {
+        buffer[n] = '\0';
+        DEBUG_PRINTF("Client %d sent %zd bytes: '%s'\n", client_id, n, buffer);
+        
+        char* line_end = strchr(buffer, '\n');
+        if (line_end) *line_end = '\0';
+        
+        if (sscanf(buffer, "GET %255s", file_path) == 1) {
+            DEBUG_PRINTF("✅ Client %d requested file: %s\n", client_id, file_path);
+            
+            // Проверим существование файла
+            if (file_exists(file_path)) {
+                DEBUG_PRINTF("❌ File not found: %s\n", file_path);
+                return -1;
+            }
+            
+            struct stat st;
+            if (stat(file_path, &st) == 0) {
+                DEBUG_PRINTF("📁 File size: %ld bytes\n", st.st_size);
+            }
+            
+            if (tx_pool_submit_task(thread_pool, client_id, client->tx_fd, file_path) != 0) {
+                DEBUG_PRINTF("❌ Failed to submit task for client %d\n", client_id);
+                return -1;
+            }
+            DEBUG_PRINTF("✅ Task submitted for client %d\n", client_id);
+        } else {
+            DEBUG_PRINTF("❌ Invalid command from client %d: '%s'\n", client_id, buffer);
+            return -1;
+        }
+    } else if (n == 0) {
+        DEBUG_PRINTF("📞 No data from client %d (EOF)\n", client_id);
+        return 0;
+    } else {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            DEBUG_PRINTF("❌ Read error from client %d: ", client_id);
+            perror("");
+            close_client_connection(clients, client_id);
+        }
+        return -1;
+    }
+
+    return 0;
 }
 
 void close_client_connection(clients_t* clients, int client_id) {
@@ -128,148 +288,6 @@ void close_client_connection(clients_t* clients, int client_id) {
     client->rx_path[0] = '\0';
     
     clients->amount--;
-}
-
-int handle_registration_command(int cmd_fifo_fd, clients_t* clients, int epoll_fd) {
-    if (!clients) {
-        DEBUG_PRINTF("ERROR: registration failed: null ptr\n");
-        return -1;
-    }
-
-    char buffer[512];
-    char tx_path[256];
-    char rx_path[256];
-    
-    DEBUG_PRINTF("Reading registration command...\n");
-    
-    size_t total_read = 0;
-    ssize_t n;
-    
-    while ((n = read(cmd_fifo_fd, buffer + total_read, sizeof(buffer) - 1 - total_read)) > 0) {
-        total_read += (size_t)n;
-        if (total_read >= sizeof(buffer) - 1) {
-            break;
-        }
-    }
-    
-    if (total_read <= 0) {
-        if (errno != EAGAIN && errno != EWOULDBLOCK) {
-            DEBUG_PRINTF("ERROR: read from command FIFO failed\n");
-            perror("read");
-        }
-        return -1;
-    }
-
-    buffer[total_read] = '\0';
-    DEBUG_PRINTF("Received registration: %s\n", buffer);
-
-    char* line = buffer;
-    char* next_line;
-    while (line && *line) {
-        next_line = strchr(line, '\n');
-        if (next_line) {
-            *next_line = '\0';
-            next_line++;
-        }
-        
-        if (sscanf(line, "REGISTER %127s %127s", tx_path, rx_path) == 2) {
-            DEBUG_PRINTF("Parsed TX: %s, RX: %s\n", tx_path, rx_path);
-            
-            client_t* new_client = create_client(clients, tx_path, rx_path);
-            if (!new_client) {
-                DEBUG_PRINTF("ERROR: Failed to create client\n");
-                line = next_line;
-                continue;
-            }
-
-            DEBUG_PRINTF("Client %d created, adding to epoll\n", new_client->client_id);
-            
-            struct epoll_event event;
-            event.events = EPOLLIN;
-            event.data.fd = new_client->rx_fd;
-            event.data.u32 = new_client->client_id; 
-            
-            if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, new_client->rx_fd, &event) == -1) {
-                perror("epoll_ctl");
-                close(new_client->tx_fd);
-                close(new_client->rx_fd);
-                new_client->registered = 0;
-                line = next_line;
-                continue;
-            }
-            
-            DEBUG_PRINTF("Sending ACK to client\n");
-            if (send_ack_to_client(new_client->tx_fd) != 0) {
-                DEBUG_PRINTF("ERROR: Failed to send ACK\n");
-                epoll_ctl(epoll_fd, EPOLL_CTL_DEL, new_client->rx_fd, NULL);
-                close(new_client->tx_fd);
-                close(new_client->rx_fd);
-                new_client->registered = 0;
-                line = next_line;
-                continue;
-            }
-            
-            ++(clients->amount);
-            DEBUG_PRINTF("Client %d registered successfully. Total clients: %d\n", 
-                       new_client->client_id, clients->amount);
-        }
-        
-        line = next_line;
-    }
-    
-    return 0;
-}
-
-int handle_get_command(tx_threads_pool_t* thread_pool, int client_id, clients_t* clients) {
-    if (!clients || client_id < 0 || client_id >= clients->amount || 
-        !clients->clients[client_id].registered) {
-        DEBUG_PRINTF("ERROR: invalid client id %d\n", client_id);
-        return -1;
-    }
-    
-    client_t* client = &clients->clients[client_id];
-    char buffer[256];
-    char file_path[256];
-    
-    ssize_t n;
-    while ((n = read(client->rx_fd, buffer, sizeof(buffer) - 1)) > 0) {
-        buffer[n] = '\0';
-        
-        char* line = buffer;
-        char* next_line;
-        while (line && *line) {
-            next_line = strchr(line, '\n');
-            if (next_line) {
-                *next_line = '\0';
-                next_line++;
-            }
-            
-            if (sscanf(line, "GET %255s", file_path) == 1) {
-                DEBUG_PRINTF("Submitting task for client %d, file: %s\n", client_id, file_path);
-                
-                if (tx_pool_submit_task(thread_pool, client_id, 
-                                        client->tx_fd, file_path) != 0) {
-                    DEBUG_PRINTF("ERROR: get failed: can't transmit file\n");
-                } 
-            } else {
-                DEBUG_PRINTF("ERROR: invalid GET command: %s\n", line);
-            }
-            
-            line = next_line;
-        }
-    }
-    
-    if (n == 0) {
-        DEBUG_PRINTF("Client %d disconnected\n", client_id);
-        close(client->tx_fd);
-        close(client->rx_fd);
-        client->registered = 0;
-        clients->amount--;
-    } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-        perror("read from client rx_fd");
-    }
-
-    return 0;
 }
 
 client_t* create_client(clients_t* clients, const char* tx_path, const char* rx_path) {
@@ -329,56 +347,48 @@ int send_ack_to_client(int client_tx_fd) {
 int send_file_to_client(int client_tx_fd, const char* filename) {
     FILE* file = fopen(filename, "rb");
     if (!file) {
-        perror("fopen");
+        DEBUG_PRINTF("❌ Cannot open file: %s - ", filename);
+        perror("");
         return -1;
     }
 
-    fseek(file, 0, SEEK_END);
-    size_t file_size = (size_t) ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    char size_info[64];
-    snprintf(size_info, sizeof(size_info), "SIZE:%ld\n", file_size);
-    if (write(client_tx_fd, size_info, strlen(size_info)) <= 0) {
-        perror("write size info");
-        fclose(file);
-        return -1;
+    // Получаем размер файла для отладки
+    struct stat st;
+    if (stat(filename, &st) == 0) {
+        DEBUG_PRINTF("📤 Sending file: %s (%ld bytes) to fd %d\n", 
+                     filename, st.st_size, client_tx_fd);
     }
 
-    DEBUG_PRINTF("Sending file of size: %ld\n", file_size);
-    
     char buffer[4096];
     size_t total_bytes_sent = 0;
     
-    while (total_bytes_sent < file_size) {
-        size_t bytes_to_read = sizeof(buffer);
-        if (file_size - total_bytes_sent < bytes_to_read) {
-            bytes_to_read = file_size - total_bytes_sent;
-        }
-
-        size_t bytes_read = fread(buffer, 1, bytes_to_read, file);
+    while (1) {
+        size_t bytes_read = fread(buffer, 1, sizeof(buffer), file);
         
         if (bytes_read == 0) {
             if (ferror(file)) {
-                perror("fread");
+                DEBUG_PRINTF("❌ File read error: %s\n", filename);
                 fclose(file);
                 return -1;
             }
-            break; 
+            break; // EOF
         }
         
+        // ✅ Атомарная отправка всего куска
         size_t bytes_sent = 0;
         while (bytes_sent < bytes_read) {
             ssize_t result = write(client_tx_fd, buffer + bytes_sent, bytes_read - bytes_sent);
             
             if (result == -1) {
-                perror("write");
+                if (errno == EINTR) continue;
+                DEBUG_PRINTF("❌ Write error to client fd %d: ", client_tx_fd);
+                perror("");
                 fclose(file);
                 return -1;
             }
             
             if (result == 0) {
-                DEBUG_PRINTF("FIFO closed by client\n");
+                DEBUG_PRINTF("❌ FIFO closed by client (fd: %d)\n", client_tx_fd);
                 fclose(file);
                 return -1;
             }
@@ -388,10 +398,7 @@ int send_file_to_client(int client_tx_fd, const char* filename) {
         }
     }
 
-    if (fclose(file) == EOF) {
-        perror("fclose");
-        return -1;
-    }
-    
+    fclose(file);
+    DEBUG_PRINTF("✅ File %s sent successfully (%zu bytes)\n", filename, total_bytes_sent);
     return 0;
 }
