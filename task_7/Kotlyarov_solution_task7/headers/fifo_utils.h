@@ -1,6 +1,8 @@
 #ifndef FIFO_UTILS
 #define FIFO_UTILS
 
+#define _GNU_SOURCE
+
 #include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,14 +10,17 @@
 #include <unistd.h>
 #include <errno.h>
 #include <dirent.h>
+#include "Debug_printf.h"
 
-int create_fifo_with_dirs(const char* path);
+// definitely greater than max clients_id
+#define FD_TYPE_CMD_FIFO (0xFFFFFFFF) 
+
+int create_directory_recursive(const char* path);
+int create_fifo(const char* path);
 int remove_directory(const char* path);
-int remove_fifo_and_empty_dirs(const char* path);
-void cleanup_fifo_directory(const char* base_dir);
 int file_exists(const char* path);
 int is_fifo(const char* path);
-int setup_client_fifos(const char* tx_path, const char* rx_path);
-void cleanup_client_fifos(const char* tx_path, const char* rx_path);
+int remove_fifo_and_empty_dirs(const char* path);
+void cleanup_fifo_directory(const char* base_dir);
 
 #endif

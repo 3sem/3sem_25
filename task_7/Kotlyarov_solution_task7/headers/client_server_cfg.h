@@ -11,5 +11,16 @@
 #include <errno.h>
 
 #define CLIENT_SERVER_FIFO "Client_server_fifo"
+#define ACKNOWLEDGE_CMD "ACK"
+#define MAX_EVENTS 64
+
+typedef struct {
+    int tx_fd; 
+    int rx_fd;
+    char tx_path[128];
+    char rx_path[128];
+    int client_id;
+    int registered;
+} client_t;
 
 #endif

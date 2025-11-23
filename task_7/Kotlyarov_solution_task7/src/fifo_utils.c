@@ -170,23 +170,3 @@ void cleanup_fifo_directory(const char* base_dir) {
 
     closedir(dir);
 }
-
-int setup_client_fifos(const char* tx_path, const char* rx_path) {
-    if (create_fifo(tx_path) != 0) {
-        DEBUG_PRINTF("Failed to create TX FIFO: %s\n", tx_path);
-        return -1;
-    }
-
-    if (create_fifo(rx_path) != 0) {
-        DEBUG_PRINTF("Failed to create RX FIFO: %s\n", rx_path);
-        remove_fifo_and_empty_dirs(tx_path);
-        return -1;
-    }
-
-    return 0;
-}
-
-void cleanup_client_fifos(const char* tx_path, const char* rx_path) {
-    remove_fifo_and_empty_dirs(tx_path);
-    remove_fifo_and_empty_dirs(rx_path);
-}
