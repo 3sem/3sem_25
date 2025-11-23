@@ -23,14 +23,58 @@ int register_client(client_t* client_info, int cl_s_fifo_fd) {
 
     DEBUG_PRINTF("Registration command: %s\n", reg_cmd);
     
-    if (write(cl_s_fifo_fd, reg_cmd, strlen(reg_cmd)) <= 0) {
-        perror("write registration");
+    int temp_tx_fd = open(client_info->tx_path, O_RDONLY | O_NONBLOCK);
+    if (temp_tx_fd == -1) {
+        perror("open TX FIFO for registration");
         return -1;
     }
 
-    ssize_t n = read(client_info->tx_fd, response, sizeof(response) - 1);
+    if (write(cl_s_fifo_fd, reg_cmd, strlen(reg_cmd)) <= 0) {
+        perror("write registration");
+        close(temp_tx_fd);
+        return -1;
+    }
+
+    int epoll_fd = epoll_create1(0);
+    if (epoll_fd == -1) {
+        perror("epoll_create1");
+        close(temp_tx_fd);
+        return -1;
+    }
+
+    struct epoll_event event;
+    event.events = EPOLLIN;
+    event.data.fd = temp_tx_fd;
+    
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, temp_tx_fd, &event) == -1) {
+        perror("epoll_ctl");
+        close(temp_tx_fd);
+        close(epoll_fd);
+        return -1;
+    }
+
+    struct epoll_event events[1];
+    int timeout_ms = 5000; // 5 s
+    
+    int nfds = epoll_wait(epoll_fd, events, 1, timeout_ms);
+    
+    if (nfds == -1) {
+        perror("epoll_wait");
+        close(temp_tx_fd);
+        close(epoll_fd);
+        return -1;
+    } else if (nfds == 0) {
+        DEBUG_PRINTF("ERROR: Registration timeout\n");
+        close(temp_tx_fd);
+        close(epoll_fd);
+        return -1;
+    }
+    
+    ssize_t n = read(temp_tx_fd, response, sizeof(response) - 1);
     if (n <= 0) {
         perror("read ACK");
+        close(temp_tx_fd);
+        close(epoll_fd);
         return -1;
     }
     response[n] = '\0';
@@ -39,30 +83,35 @@ int register_client(client_t* client_info, int cl_s_fifo_fd) {
     
     if (strncmp(response, ACKNOWLEDGE_CMD, strlen(ACKNOWLEDGE_CMD)) != 0) {
         DEBUG_PRINTF("ERROR: wrong acknowledge: %s\n", response);
+        close(temp_tx_fd);
+        close(epoll_fd);
         return -1;
     }
 
+    close(temp_tx_fd);
+    close(epoll_fd);
+    
     DEBUG_PRINTF("Registration successful\n");
     return 0;
 }
 
 int setup_client_fifos(const char* tx_path, const char* rx_path) {
     DEBUG_PRINTF("Setting up client FIFOs...\n");
-    
+
     strncpy(global_tx_path, tx_path, sizeof(global_tx_path) - 1);
     strncpy(global_rx_path, rx_path, sizeof(global_rx_path) - 1);
-    
+
     if (create_fifo(tx_path) != 0) {
         DEBUG_PRINTF("ERROR: Failed to create TX FIFO: %s\n", tx_path);
         return -1;
     }
-    
+
     if (create_fifo(rx_path) != 0) {
         DEBUG_PRINTF("ERROR: Failed to create RX FIFO: %s\n", rx_path);
         remove(tx_path);
         return -1;
     }
-    
+
     return 0;
 }
 

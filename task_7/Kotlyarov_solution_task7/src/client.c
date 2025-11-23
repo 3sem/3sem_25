@@ -50,13 +50,6 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    int cl_s_fifo_fd = open(CLIENT_SERVER_FIFO, O_WRONLY);
-    if (cl_s_fifo_fd == -1) {
-        DEBUG_PRINTF("ERROR: '%s' was not opened\n", CLIENT_SERVER_FIFO);
-        cleanup_file_types(&files);
-        return 1;  
-    }
-
     pid_t pid = getpid();
     client_t client_info = {.client_id = (int) pid};
     const char* tx_path_string = "fifos/client_%d/tx";
@@ -73,13 +66,18 @@ int main(int argc, char* argv[]) {
 
     DEBUG_PRINTF("REGISTRATION STARTED\n");
 
+    int cl_s_fifo_fd = open(CLIENT_SERVER_FIFO, O_WRONLY);
+    if (cl_s_fifo_fd == -1) {
+        DEBUG_PRINTF("ERROR: '%s' was not opened\n", CLIENT_SERVER_FIFO);
+        cleanup_client_fifos(client_info.tx_path, client_info.rx_path);
+        return 1;  
+    }
+
     if (register_client(&client_info, cl_s_fifo_fd) != 0) {
         DEBUG_PRINTF("ERROR: client registration failed\n");
         if (output_file) fclose(output_file);
-        close(client_info.tx_fd);
-        close(client_info.rx_fd);
-        cleanup_client_fifos(client_info.tx_path, client_info.rx_path);
         close(cl_s_fifo_fd);
+        cleanup_client_fifos(client_info.tx_path, client_info.rx_path);
         cleanup_file_types(&files);
         return 1;
     }
@@ -88,12 +86,12 @@ int main(int argc, char* argv[]) {
     
     DEBUG_PRINTF("client_info.tx_path = %s\n", client_info.tx_path);
     DEBUG_PRINTF("client_info.rx_path = %s\n", client_info.rx_path);
+    
     client_info.tx_fd = open(client_info.tx_path, O_RDONLY);
     if (client_info.tx_fd == -1) {
         perror("open TX FIFO");
         if (output_file) fclose(output_file);
         cleanup_client_fifos(client_info.tx_path, client_info.rx_path);
-        close(cl_s_fifo_fd);
         cleanup_file_types(&files);
         return 1;
     }
@@ -104,7 +102,6 @@ int main(int argc, char* argv[]) {
         if (output_file) fclose(output_file);
         close(client_info.tx_fd);
         cleanup_client_fifos(client_info.tx_path, client_info.rx_path);
-        close(cl_s_fifo_fd);
         cleanup_file_types(&files);
         return 1;
     }
@@ -145,3 +142,6 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
+
+

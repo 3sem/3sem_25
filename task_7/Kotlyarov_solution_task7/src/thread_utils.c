@@ -1,6 +1,6 @@
 #include "thread_utils.h"
 
-extern tx_threads_pool_t* thread_pool;
+tx_threads_pool_t* thread_pool = NULL;
 
 tx_threads_pool_t* tx_pool_init(int threads_count) {
     if (threads_count > MAX_THREADS) {
@@ -36,6 +36,7 @@ tx_threads_pool_t* tx_pool_init(int threads_count) {
                       tx_thread_worker, (void*)thread);
     }
 
+    thread_pool = pool;
     return pool;
 }
 
@@ -75,7 +76,6 @@ void tx_pool_destroy(tx_threads_pool_t* pool) {
 
 void* tx_thread_worker(void* arg) {
     tx_thread_t* thread = (tx_thread_t*)arg;
-    tx_threads_pool_t* pool = thread_pool; 
 
     while (1) {
         sem_wait(&thread->task_sem);
@@ -88,14 +88,14 @@ void* tx_thread_worker(void* arg) {
 
         int result = send_file_to_client(client_tx_fd, filename);
 
-        pthread_mutex_lock(&pool->pool_mutex);
+        pthread_mutex_lock(&thread_pool->pool_mutex);
         thread->is_working = 0;
         thread->client_id = -1;
         thread->client_tx_fd = -1;
         thread->tasks_completed++;
-        pthread_mutex_unlock(&pool->pool_mutex);
+        pthread_mutex_unlock(&thread_pool->pool_mutex);
 
-        sem_post(&pool->available_threads);
+        sem_post(&thread_pool->available_threads);
         if (result != 0) {
             DEBUG_PRINTF("Thread %d: file transfer failed\n", thread->thread_num);
         }
@@ -107,10 +107,22 @@ void* tx_thread_worker(void* arg) {
 
 int tx_pool_submit_task(tx_threads_pool_t* pool, int client_id,
                        int client_tx_fd, const char* filename) {
+    if (!pool) {
+        DEBUG_PRINTF("ERROR: null pool in submit_task\n");
+        return -1;
+    }
+
+    int sem_value;
+    sem_getvalue(&pool->available_threads, &sem_value);
+    DEBUG_PRINTF("Before sem_wait: available_threads = %d, threads_count = %d\n", 
+                 sem_value, pool->threads_count);
     if (sem_wait(&pool->available_threads) == -1) {
         perror("sem_wait");
         return -1;
     }
+
+    sem_getvalue(&pool->available_threads, &sem_value);
+    DEBUG_PRINTF("After sem_wait: available_threads = %d\n", sem_value);
 
     pthread_mutex_lock(&pool->pool_mutex);
 
@@ -129,7 +141,7 @@ int tx_pool_submit_task(tx_threads_pool_t* pool, int client_id,
     pthread_mutex_unlock(&pool->pool_mutex);
 
     sem_post(&free_thread->task_sem);
-
+    
     return 0;
 }
 

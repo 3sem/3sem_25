@@ -13,6 +13,7 @@
 #define CLIENT_SERVER_FIFO "Client_server_fifo"
 #define ACKNOWLEDGE_CMD "ACK"
 #define MAX_EVENTS 64
+#define MAX_CLIENTS 64
 
 typedef struct {
     int tx_fd; 

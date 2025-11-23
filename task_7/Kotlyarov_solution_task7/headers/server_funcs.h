@@ -10,7 +10,7 @@ typedef struct {
     int amount;
 } clients_t;
 
-void run_server_loop(int epoll_fd, tx_threads_pool_t* thread_pool);
+void run_server_loop(tx_threads_pool_t* thread_pool, int epoll_fd, int cmd_fifo_fd);
 int handle_registration_command(int cmd_fifo_fd, clients_t* clients, int epoll_fd);
 int send_ack_to_client(int client_tx_fd);
 int handle_get_command(tx_threads_pool_t* thread_pool, int client_id, clients_t* clients);
