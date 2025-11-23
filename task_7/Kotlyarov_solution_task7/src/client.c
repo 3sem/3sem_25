@@ -64,8 +64,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    DEBUG_PRINTF("REGISTRATION STARTED\n");
-
     int cl_s_fifo_fd = open(CLIENT_SERVER_FIFO, O_WRONLY);
     if (cl_s_fifo_fd == -1) {
         DEBUG_PRINTF("ERROR: '%s' was not opened\n", CLIENT_SERVER_FIFO);
@@ -108,6 +106,7 @@ int main(int argc, char* argv[]) {
 
     int success_count = 0;
     int total_files = files.read_files_count;
+    DEBUG_PRINTF("total_files = %d\n", total_files); 
     
     if (total_files > 0) {
         for (int i = 0; i < total_files; i++) {
@@ -116,7 +115,6 @@ int main(int argc, char* argv[]) {
                 DEBUG_PRINTF("ERROR: Failed to send GET command for: %s\n", filename);
                 continue;
             }
-            
             if (client_recieve_and_print(client_info.tx_fd) != 0) {
                 DEBUG_PRINTF("ERROR: Failed to receive file: %s\n", filename);
             } else {
@@ -142,6 +140,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-
-
-

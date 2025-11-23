@@ -4,7 +4,6 @@ static char global_tx_path[256] = "";
 static char global_rx_path[256] = "";
 
 int register_client(client_t* client_info, int cl_s_fifo_fd) {
-    DEBUG_PRINTF("REGISTRATION\n");
     if (!client_info) {
         DEBUG_PRINTF("ERROR: null client info\n");
         return -1;
@@ -130,23 +129,50 @@ int client_recieve_and_print(int tx_fd) {
         return -1;
     }
 
+    char size_buf[64];
+    size_t size_bytes_read = 0;
+    char c;
+    
+    while (size_bytes_read < sizeof(size_buf) - 1) {
+        if (read(tx_fd, &c, 1) != 1) {
+            perror("read size info");
+            return -1;
+        }
+        if (c == '\n') {
+            break;
+        }
+        size_buf[size_bytes_read++] = c;
+    }
+    size_buf[size_bytes_read] = '\0';
+
+    long file_size = 0;
+    if (sscanf(size_buf, "SIZE:%ld", &file_size) != 1) {
+        DEBUG_PRINTF("ERROR: invalid size format: %s\n", size_buf);
+        return -1;
+    }
+
+    DEBUG_PRINTF("Expecting file of size: %ld\n", file_size);
+
     char buffer[BUFFER_SIZE];
     ssize_t total_bytes_read = 0;
-    ssize_t bytes_read;
     
-    while (1) {
-        bytes_read = read(tx_fd, buffer, sizeof(buffer));
+    while (total_bytes_read < file_size) {
+        ssize_t bytes_to_read = sizeof(buffer);
+        if (file_size - total_bytes_read < bytes_to_read) {
+            bytes_to_read = file_size - total_bytes_read;
+        }
+
+        ssize_t bytes_read = read(tx_fd, buffer, bytes_to_read);
         
         if (bytes_read == -1) {
-            if (errno == EINTR) {
-                continue;
-            }
             perror("read from FIFO");
             return -1;
         }
         
         if (bytes_read == 0) {
-            break;
+            DEBUG_PRINTF("ERROR: premature EOF, expected %ld, got %zd\n", 
+                        file_size, total_bytes_read);
+            return -1;
         }
         
         total_bytes_read += bytes_read;
@@ -156,27 +182,15 @@ int client_recieve_and_print(int tx_fd) {
             ssize_t result = write(STDOUT_FILENO, buffer + bytes_written, bytes_read - bytes_written);
             
             if (result == -1) {
-                if (errno == EINTR) {
-                    continue; 
-                }
                 perror("write to stdout");
-                return -1;
-            }
-            
-            if (result == 0) {
-                DEBUG_PRINTF("ERROR: stdout closed unexpectedly\n");
                 return -1;
             }
             
             bytes_written += result;
         }
-        
-        if (fflush(stdout) == EOF) {
-            perror("fflush");
-            return -1;
-        }
     }
     
+    DEBUG_PRINTF("File received successfully: %zd bytes\n", total_bytes_read);
     return 0;
 }
 
@@ -196,6 +210,7 @@ int send_get_command(client_t* client_info, const char* filename) {
         return -1;
     }
 
+    DEBUG_PRINTF("Command %s sent successfully\n", command);
     return 0;
 }
 

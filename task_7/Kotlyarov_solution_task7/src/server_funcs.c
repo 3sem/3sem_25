@@ -1,21 +1,82 @@
 #include "server_funcs.h"
 
-void run_server_loop(tx_threads_pool_t* thread_pool, int epoll_fd, int cmd_fifo_fd) {
+int server_should_exit = 0;
+clients_t clients = { .amount = 0 };
+
+void server_signal_handler(int sig) {
+    DEBUG_PRINTF("\nReceived signal %d, shutting down server...\n", sig);
+    server_should_exit = 1;
+}
+
+void setup_server_signal_handlers(void) {
+    struct sigaction sa;
+    sa.sa_handler = server_signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    
+    sigaction(SIGINT, &sa, NULL);   // Ctrl+C
+    sigaction(SIGTERM, &sa, NULL);  // kill command
+    sigaction(SIGQUIT, &sa, NULL);  // Ctrl+ backslash
+    
+    signal(SIGPIPE, SIG_IGN);
+}
+
+void cleanup_server_resources(int cmd_fifo_fd, int epoll_fd, tx_threads_pool_t* pool) {
+    DEBUG_PRINTF("Cleaning up server resources...\n");
+    
+    if (pool) {
+        tx_pool_destroy(pool);
+    }
+    
+    if (epoll_fd != -1) {
+        close(epoll_fd);
+    }
+    
+    if (cmd_fifo_fd != -1) {
+        close(cmd_fifo_fd);
+    }
+    
+    if (file_exists(CLIENT_SERVER_FIFO)) {
+        remove_fifo_and_empty_dirs(CLIENT_SERVER_FIFO);
+        DEBUG_PRINTF("Removed server FIFO: %s\n", CLIENT_SERVER_FIFO);
+    }
+    
+    for (int i = 0; i < clients.amount; i++) {
+        if (clients.clients[i].registered) {
+            close_client_connection(&clients, i);
+        }
+    }
+    
+    DEBUG_PRINTF("Server cleanup completed\n");
+}
+
+void run_server_loop(tx_threads_pool_t* pool, int epoll_fd, int cmd_fifo_fd) {
     struct epoll_event events[MAX_EVENTS];
-    clients_t clients = { .amount = 0 };
     
     DEBUG_PRINTF("Server loop started\n");
     
-    while (1) {
-        int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+    while (!server_should_exit) {
+        int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, 1000); // 1 second timeout
+        
         if (nfds == -1) {
+            if (errno == EINTR) {
+                if (server_should_exit) {
+                    break;
+                }
+                continue;
+            }
             perror("epoll_wait");
             continue;
         }
         
-        for (int i = 0; i < nfds; ++i) {
-            int fd = events[i].data.fd;
-            DEBUG_PRINTF("fd = %d, cmd_fifo_fd = %d\n", fd, cmd_fifo_fd);
+        if (nfds == 0) {
+            if (server_should_exit) {
+                break;
+            }
+            continue;
+        }
+        
+        for (int i = 0; i < nfds && !server_should_exit; ++i) {
             uint32_t data_type = events[i].data.u32;
             
             if (data_type == FD_TYPE_CMD_FIFO) {
@@ -24,17 +85,49 @@ void run_server_loop(tx_threads_pool_t* thread_pool, int epoll_fd, int cmd_fifo_
             } else {
                 int client_id = data_type;
                 DEBUG_PRINTF("Processing GET command from client %d\n", client_id);
-                handle_get_command(thread_pool, client_id, &clients);
+                handle_get_command(pool, client_id, &clients);
             }
         }
     }
     
-    for (int i = 0; i < clients.amount; i++) {
-        if (clients.clients[i].registered) {
-            close(clients.clients[i].tx_fd);
-            close(clients.clients[i].rx_fd);
-        }
+    DEBUG_PRINTF("Server loop exiting...\n");
+}
+
+void close_client_connection(clients_t* clients, int client_id) {
+    if (!clients || client_id < 0 || client_id >= clients->amount || 
+        !clients->clients[client_id].registered) {
+        return;
     }
+    
+    client_t* client = &clients->clients[client_id];
+    
+    if (client->tx_fd != -1) {
+        close(client->tx_fd);
+        client->tx_fd = -1;
+    }
+    
+    if (client->rx_fd != -1) {
+        close(client->rx_fd);
+        client->rx_fd = -1;
+    }
+    
+    if (strlen(client->tx_path) > 0) {
+        remove_fifo_and_empty_dirs(client->tx_path);
+    }
+    
+    if (strlen(client->rx_path) > 0) {
+        remove_fifo_and_empty_dirs(client->rx_path);
+    }
+    
+    DEBUG_PRINTF("Cleaned up client %d FIFOs: %s, %s\n", 
+                 client_id, client->tx_path, client->rx_path);
+    
+    client->registered = 0;
+    client->client_id = -1;
+    client->tx_path[0] = '\0';
+    client->rx_path[0] = '\0';
+    
+    clients->amount--;
 }
 
 int handle_registration_command(int cmd_fifo_fd, clients_t* clients, int epoll_fd) {
@@ -157,9 +250,7 @@ int handle_get_command(tx_threads_pool_t* thread_pool, int client_id, clients_t*
                 if (tx_pool_submit_task(thread_pool, client_id, 
                                         client->tx_fd, file_path) != 0) {
                     DEBUG_PRINTF("ERROR: get failed: can't transmit file\n");
-                } else {
-                    DEBUG_PRINTF("TASK SUBMITTED\n");
-                }
+                } 
             } else {
                 DEBUG_PRINTF("ERROR: invalid GET command: %s\n", line);
             }
@@ -242,11 +333,30 @@ int send_file_to_client(int client_tx_fd, const char* filename) {
         return -1;
     }
 
+    fseek(file, 0, SEEK_END);
+    size_t file_size = (size_t) ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    char size_info[64];
+    snprintf(size_info, sizeof(size_info), "SIZE:%ld\n", file_size);
+    if (write(client_tx_fd, size_info, strlen(size_info)) <= 0) {
+        perror("write size info");
+        fclose(file);
+        return -1;
+    }
+
+    DEBUG_PRINTF("Sending file of size: %ld\n", file_size);
+    
     char buffer[4096];
     size_t total_bytes_sent = 0;
     
-    while (1) {
-        size_t bytes_read = fread(buffer, 1, sizeof(buffer), file);
+    while (total_bytes_sent < file_size) {
+        size_t bytes_to_read = sizeof(buffer);
+        if (file_size - total_bytes_sent < bytes_to_read) {
+            bytes_to_read = file_size - total_bytes_sent;
+        }
+
+        size_t bytes_read = fread(buffer, 1, bytes_to_read, file);
         
         if (bytes_read == 0) {
             if (ferror(file)) {
@@ -262,9 +372,6 @@ int send_file_to_client(int client_tx_fd, const char* filename) {
             ssize_t result = write(client_tx_fd, buffer + bytes_sent, bytes_read - bytes_sent);
             
             if (result == -1) {
-                if (errno == EINTR) {
-                    continue;
-                }
                 perror("write");
                 fclose(file);
                 return -1;

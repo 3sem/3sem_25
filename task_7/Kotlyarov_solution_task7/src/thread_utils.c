@@ -112,17 +112,17 @@ int tx_pool_submit_task(tx_threads_pool_t* pool, int client_id,
         return -1;
     }
 
-    int sem_value;
+    /*int sem_value;
     sem_getvalue(&pool->available_threads, &sem_value);
     DEBUG_PRINTF("Before sem_wait: available_threads = %d, threads_count = %d\n", 
-                 sem_value, pool->threads_count);
+                 sem_value, pool->threads_count);*/
     if (sem_wait(&pool->available_threads) == -1) {
         perror("sem_wait");
         return -1;
     }
 
-    sem_getvalue(&pool->available_threads, &sem_value);
-    DEBUG_PRINTF("After sem_wait: available_threads = %d\n", sem_value);
+    /*sem_getvalue(&pool->available_threads, &sem_value);
+    DEBUG_PRINTF("After sem_wait: available_threads = %d\n", sem_value);*/
 
     pthread_mutex_lock(&pool->pool_mutex);
 

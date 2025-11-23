@@ -52,6 +52,7 @@ set(SERVER_SOURCES
 add_executable(client ${CLIENT_SOURCES})
 add_executable(server ${SERVER_SOURCES})
 
+# ДОБАВИТЬ ЗДЕСЬ - после add_executable, перед target_link_libraries
 target_compile_definitions(client PRIVATE _POSIX_C_SOURCE=200809L)
 target_compile_definitions(server PRIVATE _POSIX_C_SOURCE=200809L)
 
