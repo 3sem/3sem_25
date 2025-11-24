@@ -11,6 +11,9 @@
 #include <errno.h>
 
 #define CLIENT_SERVER_FIFO "Client_server_fifo"
+#define DISCONNECT_CMD "DISCONNECT"
+#define GET_CMD "GET"
+#define REGISTER_CMD "REGISTER"
 #define ACKNOWLEDGE_CMD "ACK"
 #define MAX_EVENTS 64
 #define MAX_CLIENTS 64
@@ -22,6 +25,8 @@ typedef struct {
     char rx_path[128];
     int client_id;
     int registered;
+    char cmd_buffer[1024];
+    size_t cmd_len;
 } client_t;
 
 #endif

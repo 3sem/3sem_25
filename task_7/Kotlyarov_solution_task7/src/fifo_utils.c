@@ -31,63 +31,18 @@ int create_fifo(const char* path) {
     if (last_slash != NULL) {
         *last_slash = '\0';
         
-        if (create_directory_recursive(dir_path) == -1) {
-            if (errno != EEXIST) {
-                perror("mkdir");
-                return -1;
-            }
-        }
-    }
-    
-    if (mkfifo(path, 0666) == -1) {
-        if (errno != EEXIST) {
-            perror("mkfifo");
+        if (create_directory_recursive(dir_path) == -1 && errno != EEXIST) {
+            perror("mkdir");
             return -1;
         }
     }
     
-    DEBUG_PRINTF("FIFO created: %s\n", path);
-    return 0;
-}
-
-int remove_directory(const char* path) {
-    DIR* dir = opendir(path);
-    if (!dir) {
-        if (errno == ENOTDIR) {
-            return unlink(path);
-        }
+    if (mkfifo(path, 0666) == -1 && errno != EEXIST) {
+        perror("mkfifo");
         return -1;
     }
-
-    struct dirent* entry;
-    int result = 0;
-    char file_path[1024];
-
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-
-        snprintf(file_path, sizeof(file_path), "%s/%s", path, entry->d_name);
-
-        if (entry->d_type == DT_DIR) {
-            result = remove_directory(file_path);
-        } else {
-            result = unlink(file_path);
-        }
-
-        if (result != 0) {
-            break;
-        }
-    }
-
-    closedir(dir);
-
-    if (result == 0) {
-        result = rmdir(path);
-    }
-
-    return result;
+    
+    return 0;
 }
 
 int file_exists(const char* path) {
@@ -103,9 +58,28 @@ int is_fifo(const char* path) {
     return S_ISFIFO(statbuf.st_mode);
 }
 
+static int is_directory_empty(const char* path) {
+    DIR* dir = opendir(path);
+    if (!dir) {
+        return 0;
+    }
+
+    int is_empty = 1;
+    struct dirent* entry;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+            is_empty = 0;
+            break;
+        }
+    }
+    closedir(dir);
+
+    return is_empty;
+}
+
 int remove_fifo_and_empty_dirs(const char* path) {
     if (!file_exists(path)) {
-        DEBUG_PRINTF("File does not exist: %s\n", path);
         return 0;
     }
 
@@ -122,22 +96,8 @@ int remove_fifo_and_empty_dirs(const char* path) {
     if (last_slash != NULL) {
         *last_slash = '\0';
 
-        DIR* dir = opendir(dir_path);
-        if (dir) {
-            int is_empty = 1;
-            struct dirent* entry;
-
-            while ((entry = readdir(dir)) != NULL) {
-                if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                    is_empty = 0;
-                    break;
-                }
-            }
-            closedir(dir);
-
-            if (is_empty) {
-                rmdir(dir_path);
-            }
+        if (is_directory_empty(dir_path)) {
+            rmdir(dir_path);
         }
     }
 

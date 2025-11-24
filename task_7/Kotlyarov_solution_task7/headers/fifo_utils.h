@@ -16,10 +16,9 @@
 #define FD_TYPE_CMD_FIFO (0xFFFFFFFF) 
 
 int create_directory_recursive(const char* path);
-int create_fifo(const char* path);
-int remove_directory(const char* path);
 int file_exists(const char* path);
 int is_fifo(const char* path);
+int create_fifo(const char* path);
 int remove_fifo_and_empty_dirs(const char* path);
 void cleanup_fifo_directory(const char* base_dir);
 

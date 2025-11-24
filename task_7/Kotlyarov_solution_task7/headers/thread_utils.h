@@ -42,8 +42,8 @@ extern tx_threads_pool_t* thread_pool;
 
 tx_threads_pool_t* tx_pool_init(int threads_count);
 void tx_pool_destroy(tx_threads_pool_t* pool);
-int tx_pool_submit_task(tx_threads_pool_t* pool, int client_id, int client_tx_fd, const char* filename);
 void* tx_thread_worker(void* arg);
+int tx_pool_submit_task(tx_threads_pool_t* pool, int client_id, int client_tx_fd, const char* filename);
 int find_free_thread_slot(tx_threads_pool_t* pool);
 tx_thread_t* find_available_thread(tx_threads_pool_t* pool);
 tx_thread_t* create_thread(tx_threads_pool_t* pool);

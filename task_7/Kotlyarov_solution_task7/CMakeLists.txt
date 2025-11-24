@@ -64,3 +64,22 @@ foreach(target client server)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
 endforeach()
+
+# Тестовая программа
+add_executable(test_multiple_clients
+    tests/test_multiple_clients.c
+)
+
+target_link_libraries(test_multiple_clients pthread)
+
+# Кастомная цель для запуска тестов
+add_custom_target(run_test
+    COMMAND ${CMAKE_BINARY_DIR}/test_multiple_clients
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    DEPENDS client server test_multiple_clients
+    COMMENT "Running IO Server stress test"
+)
+
+# Добавляем тест в CTest
+enable_testing()
+add_test(NAME stress_test COMMAND ${CMAKE_BINARY_DIR}/test_multiple_clients)
