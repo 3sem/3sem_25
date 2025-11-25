@@ -1,0 +1,14 @@
+# Build directories
+build/
+bin/
+lib/
+
+# IDE files
+.vscode/
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
+logs/
