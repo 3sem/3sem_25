@@ -2,7 +2,7 @@
 #define SHARED_SEND
 
 #include <pthread.h>
-#define SHM_SIZE (2<<23)
+#define SHM_SIZE (1<<20)
 #define SHM_NAME_PREFIX "file_mem_"
 #define SHM_NAME_SIZE 64
 

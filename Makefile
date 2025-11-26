@@ -103,7 +103,7 @@ $(T_PREFIX)small:
 
 $(T_PREFIX)average:
 	@mkdir -p $(T_PREFIX)
-	time dd if=/dev/urandom bs=1024b count=65 > $@
+	time dd if=/dev/urandom bs=1MB count=1 > $@
 
 $(T_PREFIX)big:
 	@mkdir -p $(T_PREFIX)
