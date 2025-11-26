@@ -1,7 +1,7 @@
 #ifndef QUEUE_SEND
 #define QUEUE_SEND
 
-#define MSG_SIZE 8188
+#define MSG_SIZE 8184
 
 typedef struct message_mqueue_t Mqueue;
 

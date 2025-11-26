@@ -30,6 +30,8 @@ Mqueue* ctor_mqueue() {
         return 0;
     }
 
+    mqueue->mbuf.mtype = 1;
+
     return mqueue;
 }
 
@@ -110,33 +112,34 @@ int send_file_mqueue (Mqueue *mqueue, const char *src_file, const char *dst_file
 }
 
 int recieve_mqueue (Mqueue *mqueue, int fd_in) {
+    // printf("recieve started\n");
+
     SET_BLOCK(fd_in);
     do {
         if ((mqueue->mbuf.size = read(fd_in, mqueue->mbuf.data, MSG_SIZE)) == -1) {
             printf("\x1b[33m""ERROR in read; errno = %d\n""\x1b[0m", errno);
             return -1;
         }
-        msgsnd(mqueue->msqid, &mqueue->mbuf, sizeof(mqueue->mbuf.size) + sizeof(mqueue->mbuf.data), 0);
-        printf("sended %d bytes\n", mqueue->mbuf.size);
+        msgsnd(mqueue->msqid, &mqueue->mbuf, sizeof(mqueue->mbuf) - sizeof(mqueue->mbuf.mtype), 0);;
     } while (mqueue->mbuf.size != 0);
 
-    printf("recieve ended\n");
+    // printf("recieve ended\n");
 
     return 0;
 }
 int send_mqueue (Mqueue *mqueue, int fd_out) {
+    // printf("send started\n");
+
     SET_BLOCK(fd_out);
     do {
-        printf("STARTED\n");
-        msgrcv(mqueue->msqid, &mqueue->mbuf, sizeof(mqueue->mbuf.size) + sizeof(mqueue->mbuf.data), 1, 0);
-        printf("recieved %d bytes\n", mqueue->mbuf.size);
-        if ((mqueue->mbuf.size = write(fd_out, mqueue->mbuf.data, MSG_SIZE)) == -1) {
+        msgrcv(mqueue->msqid, &mqueue->mbuf, sizeof(mqueue->mbuf) - sizeof(mqueue->mbuf.mtype), 0, 0);
+        if ((mqueue->mbuf.size = write(fd_out, mqueue->mbuf.data, mqueue->mbuf.size)) == -1) {
             printf("\x1b[33m""ERROR in write; errno = %d\n""\x1b[0m", errno);
             return -1;
         }
     } while (mqueue->mbuf.size != 0);
 
-    printf("send ended\n");
+    // printf("send ended\n");
 
     return 0;
 }

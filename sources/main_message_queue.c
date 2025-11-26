@@ -35,9 +35,10 @@ int main(int argc, char **argv) {
         "\x1b[32m""Time used to send file "
         "\x1b[34m""%s"
         "\x1b[32m"" with"
-        "\x1b[35m""message queue"
+        "\x1b[35m"" message queue"
         "\x1b[32m"": %ld s %ld us\n\n"
         "\x1b[0m",
         src_file, (uint64_t)prog_time.tv_sec, (uint64_t)prog_time.tv_usec
     );
+    
 }

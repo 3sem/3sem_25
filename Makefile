@@ -21,7 +21,7 @@ TEXTES_MSG := $(patsubst %, $(T_PREFIX)%_rec_mqueue,$(TEXTES_))
 
 HEADER_LIST = $(H_PREFIX)*.h
 
-run_all: run_shm run_fifo run_mqueue compare_all
+run_all: clean run_shm run_fifo run_mqueue compare_all
 
 all: main_shm main_fifo main_mqueue
 
@@ -42,14 +42,17 @@ run_mqueue: main_mqueue $(TEXTES);
 
 
 compare_all: $(TEXTES) $(TEXTES_FIFO) $(TEXTES_MSG) $(TEXTES_SHM);
+	@echo
 	@md5sum $(T_PREFIX)small
 	@md5sum $(T_PREFIX)small_rec_mqueue
 	@md5sum $(T_PREFIX)small_rec_fifo
 	@md5sum $(T_PREFIX)small_rec_shm
+	@echo
 	@md5sum $(T_PREFIX)average
 	@md5sum $(T_PREFIX)average_rec_shm
 	@md5sum $(T_PREFIX)average_rec_fifo
 	@md5sum $(T_PREFIX)average_rec_mqueue
+	@echo
 	@md5sum $(T_PREFIX)big
 	@md5sum $(T_PREFIX)big_rec_shm
 	@md5sum $(T_PREFIX)big_rec_fifo
@@ -96,7 +99,7 @@ main_mqueue: $(OBJECTS_MSG)
 
 $(T_PREFIX)small:
 	@mkdir -p $(T_PREFIX)
-	time dd if=/dev/urandom bs=1024b count=8 > $@
+	time dd if=/dev/urandom bs=1024 count=8 > $@
 
 $(T_PREFIX)average:
 	@mkdir -p $(T_PREFIX)
