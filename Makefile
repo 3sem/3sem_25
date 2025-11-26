@@ -79,7 +79,7 @@ compare_fifo: $(TEXTES_FIFO) $(TEXTES);
 	@md5sum $(T_PREFIX)big
 	@md5sum $(T_PREFIX)big_rec_fifo
 
-generate:
+generate: $(T_PREFIX)small $(T_PREFIX)average $(T_PREFIX)big
 
 main_shm: $(OBJECTS_SHM)
 	@mkdir -p $(B_PREFIX)
@@ -96,15 +96,15 @@ main_mqueue: $(OBJECTS_MSG)
 
 $(T_PREFIX)small:
 	@mkdir -p $(T_PREFIX)
-	time dd if=/dev/urandom bs=1024b count=8 | tr -d '\377' | head -c 8192 > $@
+	time dd if=/dev/urandom bs=1024b count=8 > $@
 
 $(T_PREFIX)average:
 	@mkdir -p $(T_PREFIX)
-	time dd if=/dev/urandom bs=1024b count=65 | tr -d '\377' | head -c 66560 > $@
+	time dd if=/dev/urandom bs=1024b count=65 > $@
 
 $(T_PREFIX)big:
 	@mkdir -p $(T_PREFIX)
-	time dd if=/dev/urandom bs=1MB count=128 | tr -d '\377' | head -c 128MB > $@
+	time dd if=/dev/urandom bs=1MB count=128 > $@
 
 $(O_PREFIX)%.o: $(S_PREFIX)%.c $(HEADER_LIST)
 	@mkdir -p $(O_PREFIX)
