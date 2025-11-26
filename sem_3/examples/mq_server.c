@@ -45,7 +45,7 @@ int main (int argc, char **argv)
 
         // send reply message to client
 
-        if ((qd_client = mq_open (in_buffer, O_WRONLY)) == 1) {
+        if ((qd_client = mq_open (in_buffer, O_WRONLY)) == -1) {
             perror ("Server: Not able to open client queue");
             continue;
         }
