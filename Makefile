@@ -6,7 +6,7 @@ S_PREFIX = sources/
 H_PREFIX = headers/
 T_PREFIX = text_file/
 
-SOURCES = main
+SOURCES = main montecarlo
 
 OBJECTS := $(patsubst %,$(O_PREFIX)%.o,$(SOURCES))
 
@@ -15,7 +15,9 @@ HEADER_LIST = $(H_PREFIX)*.h
 all: main
 
 run: main
-	@./$(B_PREFIX)main
+	@ for number in `seq 1 20` ;\
+		do ./$(B_PREFIX)main $$number; \
+	done
 
 main: $(OBJECTS)
 	@mkdir -p $(B_PREFIX)
