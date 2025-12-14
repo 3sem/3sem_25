@@ -1,5 +1,5 @@
 #pragma once
 
 #define BROADCAST_IP "255.255.255.255"
-#define SERVER_IP "127.0.0.1"
-#define RECEIVE_TIMEOUT 5
+#define RECEIVE_TIMEOUT 15
+#define MAX_SERVERS 100

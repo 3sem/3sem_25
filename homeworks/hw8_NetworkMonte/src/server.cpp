@@ -15,11 +15,43 @@ volatile sig_atomic_t running = 1;
 void handle_signal(int sig, siginfo_t* info, void* context);
 void handle_client(int client_fd, struct sockaddr_in *client_addr);
 int broadcast_response();
+int find_free_tcp_port(int start_port, int end_port);
 
 void handle_signal(int sig, siginfo_t* info, void* context) {
     running = 0;
-    printf("\nСервер завершает работу...\n");
+    printf("\n>> Сервер завершает работу\n");
     return;
+}
+
+int find_free_tcp_port(int start_port, int end_port) {
+    int sockfd = 0;
+    struct sockaddr_in addr;
+
+    for (int port = start_port; port <= end_port; port++) {
+        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        if (sockfd == -1) {
+            perror("socket FIND_PORT");
+            continue;
+        }
+
+        // Устанавливаем SO_REUSEADDR для быстрого переиспользования порта
+        int reuse = 1;
+        setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        addr.sin_port = htons((uint16_t)port);
+
+        if (bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+            close(sockfd);  // Закрываем тестовый сокет
+            return port;  // Нашли свободный порт
+        }
+
+        close(sockfd);
+    }
+
+    return -1;  // Не нашли свободный порт
 }
 
 void handle_client(int client_fd, struct sockaddr_in *client_addr) {
@@ -31,19 +63,19 @@ void handle_client(int client_fd, struct sockaddr_in *client_addr) {
     inet_ntop(AF_INET, &(client_addr->sin_addr), client_ip, INET_ADDRSTRLEN);
     int client_port = ntohs(client_addr->sin_port);
 
-    printf("Клиент подключен: %s:%d\n", client_ip, client_port);
+    printf(">> Клиент подключен: %s:%d\n", client_ip, client_port);
 
     while (running) {
         memset(buffer, 0, sizeof(buffer));
 
         bytes_received = (int)recv(client_fd, buffer, MAX_BUFFER - 1, 0);
         if (bytes_received == 0) {
-	    printf("Клиент %s:%d отключился\n", client_ip, client_port);
+	    printf(">> Клиент %s:%d отключился\n", client_ip, client_port);
 	    break;
         }
 
 	if (bytes_received == -1) {
-	    perror("recv");
+	    perror("recv FROM_CLIENT");
 	    break;
 	}
 
@@ -54,27 +86,25 @@ void handle_client(int client_fd, struct sockaddr_in *client_addr) {
         buffer[strcspn(buffer, "\n")] = '\0';
         buffer[strcspn(buffer, "\r")] = '\0';
 
-        printf("От клиента %s:%d: \"%s\"\n", client_ip, client_port, buffer);
+        printf(">> От клиента %s:%d: \"%s\"\n", client_ip, client_port, buffer);
 
         if (strcmp(buffer, "exit") == 0 || strcmp(buffer, "quit") == 0) {
-            printf("Клиент %s:%d запросил отключение\n", client_ip, client_port);
+            printf(">> Клиент %s:%d запросил отключение\n", client_ip, client_port);
             break;
         }
 
         // Подготавливаем ответ
         char response[MAX_BUFFER] = {};
-        int response_len = snprintf(response, sizeof(response), 
-                                   "Длина вашей строки: %zu символов\n", 
-                                   strlen(buffer));
+        int response_len = snprintf(response, sizeof(response), "Длина вашей строки: %zu символов\n", strlen(buffer));
 
         if (send(client_fd, response, (size_t)response_len, 0) == -1) {
-            perror("send");
+            perror("send TO_CLIENT");
             break;
         }
     }
 
     close(client_fd);
-    printf("Соединение с клиентом %s:%d закрыто\n", client_ip, client_port);
+    printf(">> Соединение с клиентом %s:%d закрыто\n", client_ip, client_port);
     return;
 }
 
@@ -84,6 +114,7 @@ int broadcast_response() {
     char buffer[MAX_BUFFER] = {};
     socklen_t addr_len = sizeof(client_addr);
     int broadcast_enable = 1;
+    int free_port = 0;
 
     // Создаем UDP сокет
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -105,44 +136,52 @@ int broadcast_response() {
     server_addr.sin_addr.s_addr = INADDR_ANY;
 
     if (bind(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("bind");
+        perror("bind UDP");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
 
-    printf("Сервер запущен. Ожидание запросов на порту %d...\n", BROADCAST_PORT);
+    printf(">> Сервер запущен. Ожидание запросов на порту %d\n", BROADCAST_PORT);
 
     while (running) {
         memset(buffer, 0, MAX_BUFFER);
 
         // Получаем запрос
-        int n = (int)recvfrom(sockfd, buffer, MAX_BUFFER - 1, 0, (struct sockaddr*)&client_addr, &addr_len);
-        if (n < 0) {
+        int received_bytes = (int)recvfrom(sockfd, buffer, MAX_BUFFER - 1, 0, (struct sockaddr*)&client_addr, &addr_len);
+        if (received_bytes == -1) {
+	    if (errno == EINTR) {
+		printf(">> Завершение BROADCAST сигналом\n");
+		close(sockfd);
+		return -1;
+	    }
             perror("recvfrom");
             continue;
         }
 
-        buffer[n] = '\0';
+        buffer[received_bytes] = '\0';
         char* client_ip = inet_ntoa(client_addr.sin_addr);
         int client_port = ntohs(client_addr.sin_port);
 
-        printf("Получен запрос от %s:%d: %s\n", client_ip, client_port, buffer);
+        printf(">> Получен запрос от %s:%d: %s\n", client_ip, client_port, buffer);
 
         // Проверяем, это ли наш запрос
-        if (strcmp(buffer, "BROADCAST_SEARCH") == 0) {
+        if (strcmp(buffer, BROADCAST_MSG) == 0) {
             char response[MAX_BUFFER] = {};
-            snprintf(response, MAX_BUFFER, "address");
+	    free_port = find_free_tcp_port(8000, 9000);
+	    long cores = sysconf(_SC_NPROCESSORS_CONF);
+	    snprintf(response, MAX_BUFFER, "%d %ld", free_port, cores);
 
             // Отправляем ответ клиенту
             if (sendto(sockfd, response, strlen(response), 0, (struct sockaddr*)&client_addr, addr_len) == -1)
-                perror("sendto");
+                perror("sendto CLIENT");
 
-	    printf("Отправлен ответ клиенту %s:%d\n", client_ip, client_port);
+	    printf(">> Отправлен ответ клиенту %s:%d\n", client_ip, client_port);
+	    break;
         }
     }
 
     close(sockfd);
-    return 0;
+    return free_port;
 }
 
 int main() {
@@ -153,7 +192,8 @@ int main() {
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTSTP, &sa, NULL);
 
-    if (broadcast_response() == -1)
+    int server_port = 0;
+    if ((server_port = broadcast_response()) == -1)
 	return 0;
 
     int server_fd = 0, client_fd = 0;
@@ -161,7 +201,7 @@ int main() {
     size_t client_len = 0;
 
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        perror("socket");
+        perror("socket TCP");
         exit(EXIT_FAILURE);
     }
 
@@ -177,10 +217,10 @@ int main() {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(PORT);
+    server_addr.sin_port = htons((uint16_t)server_port);
 
     if (bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
-        perror("bind");
+        perror("bind TCP");
         close(server_fd);
         exit(EXIT_FAILURE);
     }
@@ -191,8 +231,8 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    printf("Запущен сервер на порту: %d\n", PORT); 
-    printf("Ожидание подключений...\n");
+    printf(">> Запущен сервер на порту: %d\n", server_port); 
+    printf(">> Ожидание подключений\n");
 
     while (running) {
         client_len = sizeof(client_addr);
@@ -207,7 +247,7 @@ int main() {
         handle_client(client_fd, &client_addr);
     }
 
-    printf("Сервер закрыт\n");
+    printf(">> Сервер закрыт\n");
     close(server_fd);
 
     return 0;
