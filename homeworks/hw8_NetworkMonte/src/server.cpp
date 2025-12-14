@@ -75,7 +75,10 @@ void handle_client(int client_fd, struct sockaddr_in *client_addr) {
         }
 
 	if (bytes_received == -1) {
-	    perror("recv FROM_CLIENT");
+	    if (errno == EINTR)
+		printf(">> Остановка сервера сигналом\n");
+	    else 
+		perror("recv FROM_CLIENT");
 	    break;
 	}
 
@@ -87,15 +90,12 @@ void handle_client(int client_fd, struct sockaddr_in *client_addr) {
         buffer[strcspn(buffer, "\r")] = '\0';
 
         printf(">> От клиента %s:%d: \"%s\"\n", client_ip, client_port, buffer);
-
-        if (strcmp(buffer, "exit") == 0 || strcmp(buffer, "quit") == 0) {
-            printf(">> Клиент %s:%d запросил отключение\n", client_ip, client_port);
-            break;
-        }
+	double a = 0, b = 0;
+	sscanf(buffer, "%lg %lg", &a, &b);
 
         // Подготавливаем ответ
         char response[MAX_BUFFER] = {};
-        int response_len = snprintf(response, sizeof(response), "Длина вашей строки: %zu символов\n", strlen(buffer));
+        int response_len = snprintf(response, sizeof(response), "Сумма: %lg\n", a + b);
 
         if (send(client_fd, response, (size_t)response_len, 0) == -1) {
             perror("send TO_CLIENT");

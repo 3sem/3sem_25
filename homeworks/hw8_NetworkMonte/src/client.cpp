@@ -7,6 +7,12 @@
 #include <arpa/inet.h>
 #include <signal.h>
 #include <errno.h>
+#include <math.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <pthread.h>
 #include "Client.hpp"
 #include "cliver.hpp"
 
@@ -118,101 +124,113 @@ int main() {
     if ((serv_count = broadcast_search(servers)) == -1)
 	return 0;
 
-    int sockfd = 0;
-    struct sockaddr_in server_addr;
-    char buffer[MAX_BUFFER] = {};
+    int overall_cores = 0;
+    for (int i = 0; i < serv_count; i++)
+	overall_cores += servers[i].cores;
 
-    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        perror("socket TCP");
-        exit(EXIT_FAILURE);
+    int* sockfd = (int*)calloc((size_t)serv_count, sizeof(int));
+    if (!sockfd) {
+	perror("calloc");
+	return 0;
     }
 
-    // Настройка адреса сервера
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons((uint16_t)servers[0].port);
-
-    // Преобразуем IP-адрес
-    if (inet_pton(AF_INET, servers[0].ip, &server_addr.sin_addr) <= 0) {
-        perror("inet_pton SERVER");
-        close(sockfd);
-        exit(EXIT_FAILURE);
+    struct sockaddr_in* server_addr = (struct sockaddr_in*)calloc((size_t)serv_count, sizeof(struct sockaddr_in));
+    if (!server_addr) {
+	perror("calloc");
+	return 0;
     }
 
-    // Подключение к серверу
-    printf(">> Подключение к серверу %s:%d...\n", servers[0].ip, servers[0].port);
-    if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
-        perror("connect TO SERVER");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
-
-    printf(">> Успешно подключен к серверу %s:%d!\n", servers[0].ip, servers[0].port);
-    printf(">> Вводите строки (для выхода введите 'exit' или 'quit'):\n");
-
-    // Установка таймаута на получение
     struct timeval tv;
     tv.tv_sec = RECEIVE_TIMEOUT;
     tv.tv_usec = 0;
-    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1) {
-	perror("setsockopt TIMEOUT");
+
+    for (int i = 0; i < serv_count; i++) {
+	if ((sockfd[i] = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+	    perror("socket TCP");
+	    exit(EXIT_FAILURE);
+	}
+
+	memset(&server_addr[i], 0, sizeof(server_addr[0]));
+	server_addr[i].sin_family = AF_INET;
+	server_addr[i].sin_port = htons((uint16_t)servers[i].port);
+
+	if (inet_pton(AF_INET, servers[i].ip, &server_addr[i].sin_addr) == -1) {
+	    perror("inet_pton SERVER");
+	    close(sockfd[i]);
+	    continue;
+	}
+
+	printf(">> Подключение к серверу %s:%d\n", servers[i].ip, servers[i].port);
+	if (connect(sockfd[i], (struct sockaddr*)&server_addr[i], sizeof(server_addr[0])) == -1) {
+	    perror("connect TO_SERVER");
+	    close(sockfd[i]);
+	    continue;
+	}
+
+	printf(">> Успешно подключен к серверу %s:%d!\n", servers[i].ip, servers[i].port);
+
+	if (setsockopt(sockfd[i], SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1) {
+	    perror("setsockopt TIMEOUT");
+	}
     }
 
     while (running) {
-        printf("> ");
-        fflush(stdout);
+	fflush(stdout);
 
-	if (fgets(buffer, MAX_BUFFER, stdin) == NULL) {
+	double a = 0, b = 0;
+	printf("> Введите параметры интегрирования (A b): ");
+	if (scanf("%lg %lg", &a, &b) < 2) {
 	    if (errno == EINTR)
-		printf(">> Сервер отключился\n");
+		printf(">> Остановка клиента сигналом\n");
 	    else
-		perror("fgets");
+		perror("scanf");
 	    break;
 	}
 
-        // Убираем символ новой строки
-        buffer[strcspn(buffer, "\n")] = '\0';
+	char buffer[MAX_BUFFER] = {};
 
-        // Проверяем команды выхода
-        if (strcmp(buffer, "exit") == 0 || strcmp(buffer, "quit") == 0) {
-            printf(">> Отключение от сервера\n");
-            break;
-        }
+	for (int i = 0; i < serv_count; i++) {
+	    memset(buffer, 0, sizeof(buffer));
+	    double cur_a = a + (b - a) / overall_cores * servers[i].cores * i;
+	    double cur_b = a + (b - a) / overall_cores * servers[i].cores * (i + 1);
+	    snprintf(buffer, MAX_BUFFER, "%lg %lg", cur_a, cur_b);
 
-        // Проверяем пустую строку
-        if (strlen(buffer) == 0) {
-            printf(">> Введите непустую строку\n");
-            continue;
-        }
+	    if (send(sockfd[i], buffer, strlen(buffer), 0) == -1) {
+		perror("send TO_SERVER");
+		break;
+	    }
+	}
 
-        // Отправляем строку серверу
-        strcat(buffer, "\n");  // Добавляем символ новой строки
-        if (send(sockfd, buffer, strlen(buffer), 0) == -1) {
-            perror("send TO_SERVER");
-            break;
-        }
+	for (int i = 0; i < serv_count; i++) {
+	    memset(buffer, 0, sizeof(buffer));
+	    int bytes_received = (int)recv(sockfd[i], buffer, MAX_BUFFER - 1, 0);
+	    if (bytes_received == -1) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+		    printf(">> Таймаут: сервер %s:%d не ответил\n", servers[i].ip, servers[i].port); 
+		else
+		    perror("recv FROM_SERVER");
+		break;
+	    }
+	    if (bytes_received == 0) {
+		printf(">> Сервер %s:%d отключился\n", servers[i].ip, servers[i].port);
+		break;
+	    }
 
-        // Получаем ответ от сервера
-        memset(buffer, 0, sizeof(buffer));
-        int bytes_received = (int)recv(sockfd, buffer, MAX_BUFFER - 1, 0);
-        if (bytes_received == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-                printf(">> Таймаут: сервер %s:%d не ответил\n", servers[0].ip, servers[0].port); 
-	    else
-                perror("recv FROM_SERVER");
-            break;
-        } 
-	if (bytes_received == 0) {
-            printf(">> Сервер %s:%d отключился\n", servers[0].ip, servers[0].port);
-            break;
-        }
- 
-        buffer[bytes_received] = '\0';
-        printf(">> Сервер %s:%d: %s", servers[0].ip, servers[0].port, buffer);
+	    buffer[bytes_received] = '\0';
+	    printf(">> Сервер %s:%d: %s", servers[i].ip, servers[i].port, buffer);
+	}
     }
 
     printf(">> Закрытие соединения\n");
-    close(sockfd);
+    if (sockfd) {
+	free(sockfd);
+	sockfd = NULL;
+    }
+
+    if (server_addr) {
+	free(server_addr);
+	server_addr = NULL;
+    }
 
     return 0;
 }
