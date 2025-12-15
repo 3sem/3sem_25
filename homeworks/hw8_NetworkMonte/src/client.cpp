@@ -17,7 +17,7 @@
 #include "cliver.hpp"
 
 struct ServerInfo_t {
-    char* ip;
+    char ip[INET_ADDRSTRLEN];
     int port;
     int cores;
 };
@@ -26,6 +26,7 @@ volatile sig_atomic_t running = 1;
 
 void handle_signal(int sig, siginfo_t* info, void* context);
 int broadcast_search(struct ServerInfo_t* servers);
+int close_sockfd(int* sockfd, int serv_count, struct sockaddr_in* server_addr);
 
 void handle_signal(int sig, siginfo_t* info, void* context) {
     running = 0;
@@ -88,16 +89,16 @@ int broadcast_search(struct ServerInfo_t* servers) {
 		printf(">> Завершение BROADCAST сигналом\n");
 		close(sockfd);
 		return -1;
-	    }
+    	}
             break;
         }
 
         buffer[received_bytes] = '\0';
         sscanf(buffer, "%d %d", &servers[servers_found].port, &servers[servers_found].cores);
-	servers[servers_found].ip = inet_ntoa(server_addr.sin_addr);
+	inet_ntop(AF_INET, &server_addr.sin_addr, servers[servers_found].ip, INET_ADDRSTRLEN);
 
         printf(">> Найден сервер: %s:%d - port: %d, cores: %d\n", servers[servers_found].ip,
-		BROADCAST_PORT, servers[servers_found].port, servers[servers_found].cores);
+	BROADCAST_PORT, servers[servers_found].port, servers[servers_found].cores);
         servers_found++;
     }
 
@@ -111,10 +112,28 @@ int broadcast_search(struct ServerInfo_t* servers) {
     return servers_found;
 }
 
-int main() {
-    struct timespec start, end;
-    double transmission_time = 0;
+int close_sockfd(int* sockfd, int serv_count, struct sockaddr_in* server_addr) {
+    for (int i = 0; i < serv_count; i++) {
+	if (sockfd[i] != 0) {
+	    close(sockfd[i]);
+	    sockfd[i] = 0;
+	}
+    }
 
+    if (sockfd) {
+	free(sockfd);
+	sockfd = NULL;
+    }
+
+    if (server_addr) {
+	free(server_addr);
+	server_addr = NULL;
+    }
+
+    return 0;
+}
+
+int main() {
     struct sigaction sa;
     sa.sa_sigaction = handle_signal;
     sa.sa_flags = SA_SIGINFO;
@@ -150,6 +169,7 @@ int main() {
     for (int i = 0; i < serv_count; i++) {
 	if ((sockfd[i] = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 	    perror("socket TCP");
+	    close_sockfd(sockfd, serv_count, server_addr);
 	    exit(EXIT_FAILURE);
 	}
 
@@ -159,15 +179,15 @@ int main() {
 
 	if (inet_pton(AF_INET, servers[i].ip, &server_addr[i].sin_addr) == -1) {
 	    perror("inet_pton SERVER");
-	    close(sockfd[i]);
-	    continue;
+	    close_sockfd(sockfd, serv_count, server_addr);
+	    exit(EXIT_FAILURE);
 	}
 
 	printf(">> Подключение к серверу %s:%d\n", servers[i].ip, servers[i].port);
 	if (connect(sockfd[i], (struct sockaddr*)&server_addr[i], sizeof(server_addr[0])) == -1) {
 	    perror("connect TO_SERVER");
-	    close(sockfd[i]);
-	    continue;
+	    close_sockfd(sockfd, serv_count, server_addr);
+	    exit(EXIT_FAILURE);
 	}
 
 	printf(">> Успешно подключен к серверу %s:%d!\n", servers[i].ip, servers[i].port);
@@ -180,7 +200,7 @@ int main() {
     while (running) {
 	fflush(stdout);
 
-	double a = 0, b = 0, total = 0;
+	double a = 0, b = 0;
 	printf("> Введите параметры интегрирования (A b): ");
 	if (scanf("%lg %lg", &a, &b) < 2) {
 	    if (errno == EINTR)
@@ -188,11 +208,6 @@ int main() {
 	    else
 		perror("scanf");
 	    break;
-	}
-
-	if (clock_gettime(CLOCK_MONOTONIC, &start) == -1) {
-	    perror("clock_gettime");
-	    exit(EXIT_FAILURE);
 	}
 
 	char buffer[MAX_BUFFER] = {};
@@ -205,7 +220,8 @@ int main() {
 
 	    if (send(sockfd[i], buffer, strlen(buffer), 0) == -1) {
 		perror("send TO_SERVER");
-		break;
+		close_sockfd(sockfd, serv_count, server_addr);
+		exit(EXIT_FAILURE);
 	    }
 	}
 
@@ -217,39 +233,22 @@ int main() {
 		    printf(">> Таймаут: сервер %s:%d не ответил\n", servers[i].ip, servers[i].port); 
 		else
 		    perror("recv FROM_SERVER");
-		break;
+		close_sockfd(sockfd, serv_count, server_addr);
+		return 0;
 	    }
 	    if (bytes_received == 0) {
 		printf(">> Сервер %s:%d отключился\n", servers[i].ip, servers[i].port);
-		break;
+		close_sockfd(sockfd, serv_count, server_addr);
+		return 0;
 	    }
 
 	    buffer[bytes_received] = '\0';
-	    double result = 0;
-	    sscanf(buffer, "%lg", &result);
-	    printf(">> Сервер %s:%d: %lg\n", servers[i].ip, servers[i].port, result);
-	    total += result;
+	    printf(">> Сервер %s:%d: %s", servers[i].ip, servers[i].port, buffer);
 	}
-
-	if (clock_gettime(CLOCK_MONOTONIC, &end) == -1) {
-	    perror("clock_gettime");
-	    exit(EXIT_FAILURE);
-	}
-
-	transmission_time = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
-	printf(">> Ответ: %lg, общее время: %lf\n", total, transmission_time);
     }
 
     printf(">> Закрытие соединения\n");
-    if (sockfd) {
-	free(sockfd);
-	sockfd = NULL;
-    }
-
-    if (server_addr) {
-	free(server_addr);
-	server_addr = NULL;
-    }
+    close_sockfd(sockfd, serv_count, server_addr);
 
     return 0;
 }
