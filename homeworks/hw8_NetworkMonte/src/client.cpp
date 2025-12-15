@@ -7,12 +7,11 @@
 #include <arpa/inet.h>
 #include <signal.h>
 #include <errno.h>
-#include <math.h>
-#include <sys/wait.h>
 #include <time.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
-#include <pthread.h>
+#include <bits/signum-arch.h>
+#include <bits/types/sig_atomic_t.h>
+#include <stdint.h>
+#include <sys/time.h>
 #include "Client.hpp"
 #include "cliver.hpp"
 
@@ -134,6 +133,9 @@ int close_sockfd(int* sockfd, int serv_count, struct sockaddr_in* server_addr) {
 }
 
 int main() {
+	struct timespec start, end;
+    double transmission_time = 0;
+
     struct sigaction sa;
     sa.sa_sigaction = handle_signal;
     sa.sa_flags = SA_SIGINFO;
@@ -200,7 +202,7 @@ int main() {
     while (running) {
 	fflush(stdout);
 
-	double a = 0, b = 0;
+	double a = 0, b = 0, total = 0;
 	printf("> Введите параметры интегрирования (A b): ");
 	if (scanf("%lg %lg", &a, &b) < 2) {
 	    if (errno == EINTR)
@@ -210,12 +212,18 @@ int main() {
 	    break;
 	}
 
+	if (clock_gettime(CLOCK_MONOTONIC, &start) == -1) {
+	    perror("clock_gettime");
+	    exit(EXIT_FAILURE);
+	}
+
 	char buffer[MAX_BUFFER] = {};
 
+	double cur_a = a, cur_b = a;
 	for (int i = 0; i < serv_count; i++) {
 	    memset(buffer, 0, sizeof(buffer));
-	    double cur_a = a + (b - a) / overall_cores * servers[i].cores * i;
-	    double cur_b = a + (b - a) / overall_cores * servers[i].cores * (i + 1);
+	    cur_a = cur_b;
+	    cur_b = cur_a + (b - a) / overall_cores * servers[i].cores;
 	    snprintf(buffer, MAX_BUFFER, "%lg %lg", cur_a, cur_b);
 
 	    if (send(sockfd[i], buffer, strlen(buffer), 0) == -1) {
@@ -243,8 +251,19 @@ int main() {
 	    }
 
 	    buffer[bytes_received] = '\0';
-	    printf(">> Сервер %s:%d: %s", servers[i].ip, servers[i].port, buffer);
+		double result = 0;
+		sscanf(buffer, "%lg", &result);
+	    printf(">> Сервер %s:%d: %lg\n", servers[i].ip, servers[i].port, result);
+		total += result;
 	}
+
+	if (clock_gettime(CLOCK_MONOTONIC, &end) == -1) {
+	    perror("clock_gettime");
+	    exit(EXIT_FAILURE);
+	}
+
+	transmission_time = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
+	printf("Окончательный ответ: %lg, время: %lf\n", total, transmission_time);
     }
 
     printf(">> Закрытие соединения\n");
