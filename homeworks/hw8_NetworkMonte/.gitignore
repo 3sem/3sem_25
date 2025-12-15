@@ -1,0 +1,15 @@
+# Build directories
+build/
+bin/
+lib/
+.gitignore
+
+# IDE files
+.vscode/
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
+logs/

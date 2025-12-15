@@ -1,0 +1,6 @@
+#pragma once
+
+#define BROADCAST_PORT 9999
+#define MAX_BUFFER 1024
+#define BROADCAST_MSG "BROADCAST_SEARCH"
+#define BILLION 1e9

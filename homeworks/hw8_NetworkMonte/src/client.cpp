@@ -1,0 +1,273 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <signal.h>
+#include <errno.h>
+#include <time.h>
+#include <bits/signum-arch.h>
+#include <bits/types/sig_atomic_t.h>
+#include <stdint.h>
+#include <sys/time.h>
+#include "Client.hpp"
+#include "cliver.hpp"
+
+struct ServerInfo_t {
+    char ip[INET_ADDRSTRLEN];
+    int port;
+    int cores;
+};
+
+volatile sig_atomic_t running = 1;
+
+void handle_signal(int sig, siginfo_t* info, void* context);
+int broadcast_search(struct ServerInfo_t* servers);
+int close_sockfd(int* sockfd, int serv_count, struct sockaddr_in* server_addr);
+
+void handle_signal(int sig, siginfo_t* info, void* context) {
+    running = 0;
+    printf("\n>> Клиент завершает работу сигналом\n");
+    return;
+}
+
+int broadcast_search(struct ServerInfo_t* servers) {
+    int sockfd = 0;
+    struct sockaddr_in broadcast_addr;
+    char buffer[MAX_BUFFER] = BROADCAST_MSG;
+    int broadcast_enable = 1;
+
+    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+	perror("socket UDP");
+	exit(EXIT_FAILURE);
+    }
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_BROADCAST, &broadcast_enable, sizeof(broadcast_enable)) == -1) {
+	perror("setsockopt BROADCAST");
+	close(sockfd);
+	exit(EXIT_FAILURE);
+    }
+
+    struct timeval timeout;
+    timeout.tv_sec = RECEIVE_TIMEOUT;
+    timeout.tv_usec = 0;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1) {
+	perror("setsockopt TIMEOUT");
+	close(sockfd);
+	exit(EXIT_FAILURE);
+    }
+
+    memset(&broadcast_addr, 0, sizeof(broadcast_addr));
+    broadcast_addr.sin_family = AF_INET;
+    broadcast_addr.sin_port = htons(BROADCAST_PORT);
+    broadcast_addr.sin_addr.s_addr = inet_addr(BROADCAST_IP);
+
+    printf(">> Отправляю широковещательный запрос\n");
+
+    // Отправляем широковещательный запрос
+    if (sendto(sockfd, buffer, strlen(buffer), 0, (struct sockaddr*)&broadcast_addr, sizeof(broadcast_addr)) < 0) {
+        perror("sendto BROADCAST");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    printf(">> Ожидаю ответы от серверов\n");
+
+    // Принимаем ответы
+    struct sockaddr_in server_addr;
+    socklen_t addr_len = sizeof(server_addr);
+    int servers_found = 0;
+
+    while (running) {
+        memset(buffer, 0, MAX_BUFFER);
+        int received_bytes = (int)recvfrom(sockfd, buffer, MAX_BUFFER - 1, 0, (struct sockaddr*)&server_addr, &addr_len);
+        if (received_bytes == -1) {
+            if (errno == EINTR) {
+		printf(">> Завершение BROADCAST сигналом\n");
+		close(sockfd);
+		return -1;
+    	}
+            break;
+        }
+
+        buffer[received_bytes] = '\0';
+        sscanf(buffer, "%d %d", &servers[servers_found].port, &servers[servers_found].cores);
+	inet_ntop(AF_INET, &server_addr.sin_addr, servers[servers_found].ip, INET_ADDRSTRLEN);
+
+        printf(">> Найден сервер: %s:%d - port: %d, cores: %d\n", servers[servers_found].ip,
+	BROADCAST_PORT, servers[servers_found].port, servers[servers_found].cores);
+        servers_found++;
+    }
+
+    if (servers_found == 0) {
+        printf(">> Серверы не найдены\n");
+	return -1;
+    }
+
+    printf(">> Найдено серверов: %d\n", servers_found);
+    close(sockfd);
+    return servers_found;
+}
+
+int close_sockfd(int* sockfd, int serv_count, struct sockaddr_in* server_addr) {
+    for (int i = 0; i < serv_count; i++) {
+	if (sockfd[i] != 0) {
+	    close(sockfd[i]);
+	    sockfd[i] = 0;
+	}
+    }
+
+    if (sockfd) {
+	free(sockfd);
+	sockfd = NULL;
+    }
+
+    if (server_addr) {
+	free(server_addr);
+	server_addr = NULL;
+    }
+
+    return 0;
+}
+
+int main() {
+	struct timespec start, end;
+    double transmission_time = 0;
+
+    struct sigaction sa;
+    sa.sa_sigaction = handle_signal;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTSTP, &sa, NULL);
+
+    struct ServerInfo_t servers[MAX_SERVERS] = {};
+    int serv_count = 0;
+    if ((serv_count = broadcast_search(servers)) == -1)
+	return 0;
+
+    int overall_cores = 0;
+    for (int i = 0; i < serv_count; i++)
+	overall_cores += servers[i].cores;
+
+    int* sockfd = (int*)calloc((size_t)serv_count, sizeof(int));
+    if (!sockfd) {
+	perror("calloc");
+	return 0;
+    }
+
+    struct sockaddr_in* server_addr = (struct sockaddr_in*)calloc((size_t)serv_count, sizeof(struct sockaddr_in));
+    if (!server_addr) {
+	perror("calloc");
+	return 0;
+    }
+
+    struct timeval tv;
+    tv.tv_sec = RECEIVE_TIMEOUT;
+    tv.tv_usec = 0;
+
+    for (int i = 0; i < serv_count; i++) {
+	if ((sockfd[i] = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+	    perror("socket TCP");
+	    close_sockfd(sockfd, serv_count, server_addr);
+	    exit(EXIT_FAILURE);
+	}
+
+	memset(&server_addr[i], 0, sizeof(server_addr[0]));
+	server_addr[i].sin_family = AF_INET;
+	server_addr[i].sin_port = htons((uint16_t)servers[i].port);
+
+	if (inet_pton(AF_INET, servers[i].ip, &server_addr[i].sin_addr) == -1) {
+	    perror("inet_pton SERVER");
+	    close_sockfd(sockfd, serv_count, server_addr);
+	    exit(EXIT_FAILURE);
+	}
+
+	printf(">> Подключение к серверу %s:%d\n", servers[i].ip, servers[i].port);
+	if (connect(sockfd[i], (struct sockaddr*)&server_addr[i], sizeof(server_addr[0])) == -1) {
+	    perror("connect TO_SERVER");
+	    close_sockfd(sockfd, serv_count, server_addr);
+	    exit(EXIT_FAILURE);
+	}
+
+	printf(">> Успешно подключен к серверу %s:%d!\n", servers[i].ip, servers[i].port);
+
+	if (setsockopt(sockfd[i], SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1) {
+	    perror("setsockopt TIMEOUT");
+	}
+    }
+
+    while (running) {
+	fflush(stdout);
+
+	double a = 0, b = 0, total = 0;
+	printf("> Введите параметры интегрирования (A b): ");
+	if (scanf("%lg %lg", &a, &b) < 2) {
+	    if (errno == EINTR)
+		printf(">> Остановка клиента сигналом\n");
+	    else
+		perror("scanf");
+	    break;
+	}
+
+	if (clock_gettime(CLOCK_MONOTONIC, &start) == -1) {
+	    perror("clock_gettime");
+	    exit(EXIT_FAILURE);
+	}
+
+	char buffer[MAX_BUFFER] = {};
+
+	double cur_a = a, cur_b = a;
+	for (int i = 0; i < serv_count; i++) {
+	    memset(buffer, 0, sizeof(buffer));
+	    cur_a = cur_b;
+	    cur_b = cur_a + (b - a) / overall_cores * servers[i].cores;
+	    snprintf(buffer, MAX_BUFFER, "%lg %lg", cur_a, cur_b);
+
+	    if (send(sockfd[i], buffer, strlen(buffer), 0) == -1) {
+		perror("send TO_SERVER");
+		close_sockfd(sockfd, serv_count, server_addr);
+		exit(EXIT_FAILURE);
+	    }
+	}
+
+	for (int i = 0; i < serv_count; i++) {
+	    memset(buffer, 0, sizeof(buffer));
+	    int bytes_received = (int)recv(sockfd[i], buffer, MAX_BUFFER - 1, 0);
+	    if (bytes_received == -1) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+		    printf(">> Таймаут: сервер %s:%d не ответил\n", servers[i].ip, servers[i].port); 
+		else
+		    perror("recv FROM_SERVER");
+		close_sockfd(sockfd, serv_count, server_addr);
+		return 0;
+	    }
+	    if (bytes_received == 0) {
+		printf(">> Сервер %s:%d отключился\n", servers[i].ip, servers[i].port);
+		close_sockfd(sockfd, serv_count, server_addr);
+		return 0;
+	    }
+
+	    buffer[bytes_received] = '\0';
+		double result = 0;
+		sscanf(buffer, "%lg", &result);
+	    printf(">> Сервер %s:%d: %lg\n", servers[i].ip, servers[i].port, result);
+		total += result;
+	}
+
+	if (clock_gettime(CLOCK_MONOTONIC, &end) == -1) {
+	    perror("clock_gettime");
+	    exit(EXIT_FAILURE);
+	}
+
+	transmission_time = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
+	printf("Окончательный ответ: %lg, время: %lf\n", total, transmission_time);
+    }
+
+    printf(">> Закрытие соединения\n");
+    close_sockfd(sockfd, serv_count, server_addr);
+
+    return 0;
+}

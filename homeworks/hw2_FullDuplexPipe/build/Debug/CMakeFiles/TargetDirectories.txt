@@ -1,0 +1,3 @@
+/Users/anatolij/Documents/GitHub/3sem_25/homeworks/hw2_FullDuplexPipe/build/Debug/CMakeFiles/FullDuplexPipe.dir
+/Users/anatolij/Documents/GitHub/3sem_25/homeworks/hw2_FullDuplexPipe/build/Debug/CMakeFiles/edit_cache.dir
+/Users/anatolij/Documents/GitHub/3sem_25/homeworks/hw2_FullDuplexPipe/build/Debug/CMakeFiles/rebuild_cache.dir
