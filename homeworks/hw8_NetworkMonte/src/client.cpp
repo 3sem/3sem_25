@@ -112,6 +112,9 @@ int broadcast_search(struct ServerInfo_t* servers) {
 }
 
 int main() {
+    struct timespec start, end;
+    double transmission_time = 0;
+
     struct sigaction sa;
     sa.sa_sigaction = handle_signal;
     sa.sa_flags = SA_SIGINFO;
@@ -177,7 +180,7 @@ int main() {
     while (running) {
 	fflush(stdout);
 
-	double a = 0, b = 0;
+	double a = 0, b = 0, total = 0;
 	printf("> Введите параметры интегрирования (A b): ");
 	if (scanf("%lg %lg", &a, &b) < 2) {
 	    if (errno == EINTR)
@@ -185,6 +188,11 @@ int main() {
 	    else
 		perror("scanf");
 	    break;
+	}
+
+	if (clock_gettime(CLOCK_MONOTONIC, &start) == -1) {
+	    perror("clock_gettime");
+	    exit(EXIT_FAILURE);
 	}
 
 	char buffer[MAX_BUFFER] = {};
@@ -217,8 +225,19 @@ int main() {
 	    }
 
 	    buffer[bytes_received] = '\0';
-	    printf(">> Сервер %s:%d: %s", servers[i].ip, servers[i].port, buffer);
+	    double result = 0;
+	    sscanf(buffer, "%lg", &result);
+	    printf(">> Сервер %s:%d: %lg\n", servers[i].ip, servers[i].port, result);
+	    total += result;
 	}
+
+	if (clock_gettime(CLOCK_MONOTONIC, &end) == -1) {
+	    perror("clock_gettime");
+	    exit(EXIT_FAILURE);
+	}
+
+	transmission_time = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / (double)BILLION;
+	printf(">> Ответ: %lg, общее время: %lf\n", total, transmission_time);
     }
 
     printf(">> Закрытие соединения\n");
