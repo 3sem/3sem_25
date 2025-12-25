@@ -1,0 +1,8 @@
+.PHONY: run_tests
+
+run_tests:
+	@echo "Running tests..."
+	@for n in 1 2 4 8 16 20 32 64 128 256 512 1024 2048 4096 8192 16384 32768 65536; do \
+		echo "Running with n=$$n"; \
+		./Monte_Carlo_integration $$n 100000000 3 7 -1.6 1.5; \
+	done
